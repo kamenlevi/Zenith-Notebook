@@ -1,0 +1,7 @@
+{
+  "name": "Zenith Notebook",
+  "description": "A minimalist, black-and-white digital notebook designed for focus and clarity. Optimized for tablets and stylus input, it offers a clean writing experience with essential tools like pens, highlighters, and erasers, organized by subject.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

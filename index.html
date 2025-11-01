@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Zenith Notebook</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Open+Sans:wght@400;700&family=Lato:wght@400;700&family=Montserrat:wght@400;700&family=Oswald:wght@400;700&family=Source+Code+Pro:wght@400;700&family=Slabo+27px&family=Raleway:wght@400;700&family=PT+Sans:wght@400;700&family=Merriweather:wght@400;700&family=Lora:ital,wght@0,400..700;1,400..700&family=Playfair+Display:wght@400;700&family=Nunito:wght@400;700&family=Poppins:wght@400;700&family=Inter:wght@400;700&family=Source+Sans+Pro:wght@400;700&family=PT+Serif:wght@400;700&family=Ubuntu:wght@400;700&family=Bebas+Neue&family=Caveat&family=Comfortaa&family=Dancing+Script&family=Exo+2&family=Fira+Sans&family=Josefin+Sans&family=Lobster&family=Pacifico&family=Quicksand&family=Shadows+Into+Light&family=Abril+Fatface&family=Alegreya&family=Anton&family=Archivo&family=Arimo&family=Asap&family=Baskervville&family=BioRhyme&family=Bitter&family=Cabin&family=Cairo&family=Cardo&family=Cinzel&family=Cormorant+Garamond&family=Crimson+Text&family=Domine&family=Dosis&family=EB+Garamond&family=Encode+Sans&family=Fauna+One&family=Fjalla+One&family=Frank+Ruhl+Libre&family=Hind&family=IBM+Plex+Sans&family=Inconsolata&family=Indie+Flower&family=Karla&family=Libre+Baskerville&family=Libre+Franklin&family=Muli&family=Noto+Sans&family=Noto+Serif&family=Old+Standard+TT&family=Overpass&family=Patrick+Hand&family=Playball&family=Prompt&family=Proza+Libre&family=Rajdhani&family=Rubik&family=Signika&family=Space+Mono&family=Spectral&family=Teko&family=Tinos&family=Titillium+Web&family=Trirong&family=Varela+Round&family=Vollkorn&family-Work+Sans&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+      body {
+        font-family: 'Lora', serif;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .custom-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 20px;
+        height: 20px;
+        background: #f1f5f9;
+        cursor: pointer;
+        border-radius: 50%;
+        margin-top: -6px;
+      }
+      .custom-slider::-moz-range-thumb {
+        width: 20px;
+        height: 20px;
+        background: #f1f5f9;
+        cursor: pointer;
+        border-radius: 50%;
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; transform: scale(0.95); }
+        to { opacity: 1; transform: scale(1); }
+      }
+      .animate-fade-in {
+        animation: fadeIn 0.1s ease-out forwards;
+      }
+      @keyframes fadeInBackdrop {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      .animate-fade-in-backdrop {
+        animation: fadeInBackdrop 0.2s ease-out forwards;
+      }
+      
+      /* Print specific styles */
+      #print-container {
+        display: none;
+      }
+      @media print {
+        body > #root {
+          display: none !important;
+        }
+        #print-container {
+          display: block !important;
+        }
+        @page {
+          size: auto;
+          margin: 0;
+        }
+        .print-page {
+          width: 100%;
+          height: auto;
+          display: block;
+          page-break-after: always;
+        }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "vite": "https://aistudiocdn.com/vite@^7.1.12",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-black">
+    <div id="root"></div>
+    <div id="print-container"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
