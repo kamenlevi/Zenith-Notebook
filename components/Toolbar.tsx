@@ -27,6 +27,25 @@ interface ToolbarProps {
 
 const baseColors = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7'];
 
+interface ToolButtonProps {
+  tool: ToolType;
+  Icon: React.FC<{ className?: string }>;
+  activeTool: ToolType;
+  onSelect: (tool: ToolType) => void;
+}
+
+const ToolButton: React.FC<ToolButtonProps> = ({ tool, Icon, activeTool, onSelect }) => (
+  <button
+    onClick={() => onSelect(tool)}
+    className={`p-3 rounded-md transition-colors ${
+      activeTool === tool ? 'bg-slate-600 text-white' : 'hover:bg-slate-700'
+    }`}
+    aria-label={`Select ${tool} tool`}
+  >
+    <Icon />
+  </button>
+);
+
 export const Toolbar: React.FC<ToolbarProps> = ({ 
   settings, 
   onSettingsChange, 
@@ -62,30 +81,18 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-  
+
   const handleToolChange = (tool: ToolType) => {
     onSettingsChange(prev => ({ ...prev, tool }));
   };
-  
+
   const handleColorChange = (color: string) => {
     onSettingsChange(prev => ({ ...prev, color }));
   };
-  
+
   const handleFontChange = (fontFamily: string) => {
     onSettingsChange(prev => ({ ...prev, fontFamily }));
   };
-
-  const ToolButton = ({ tool, Icon }: { tool: ToolType; Icon: React.FC<{className?:string}> }) => (
-    <button
-      onClick={() => handleToolChange(tool)}
-      className={`p-3 rounded-md transition-colors ${
-        settings.tool === tool ? 'bg-slate-600 text-white' : 'hover:bg-slate-700'
-      }`}
-      aria-label={`Select ${tool} tool`}
-    >
-      <Icon />
-    </button>
-  );
 
   const showColorPalette = [ToolType.Pen, ToolType.Pencil, ToolType.Highlighter, ToolType.Text].includes(settings.tool);
   const presetColors = [theme === 'light' ? '#000000' : '#FFFFFF', ...baseColors];
@@ -95,11 +102,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     <div className="flex justify-center p-2 border-b border-slate-800">
       <div className="flex items-center gap-2 bg-slate-800/80 backdrop-blur-lg border border-slate-700 rounded-xl p-2 flex-wrap justify-center">
         <div className="flex items-center border-r border-slate-700 pr-2">
-          <ToolButton tool={ToolType.Pen} Icon={PenIcon} />
-          <ToolButton tool={ToolType.Pencil} Icon={PencilIcon} />
-          <ToolButton tool={ToolType.Highlighter} Icon={HighlighterIcon} />
-          <ToolButton tool={ToolType.Text} Icon={TextIcon} />
-          <ToolButton tool={ToolType.Eraser} Icon={EraserIcon} />
+          <ToolButton tool={ToolType.Pen} Icon={PenIcon} activeTool={settings.tool} onSelect={handleToolChange} />
+          <ToolButton tool={ToolType.Pencil} Icon={PencilIcon} activeTool={settings.tool} onSelect={handleToolChange} />
+          <ToolButton tool={ToolType.Highlighter} Icon={HighlighterIcon} activeTool={settings.tool} onSelect={handleToolChange} />
+          <ToolButton tool={ToolType.Text} Icon={TextIcon} activeTool={settings.tool} onSelect={handleToolChange} />
+          <ToolButton tool={ToolType.Eraser} Icon={EraserIcon} activeTool={settings.tool} onSelect={handleToolChange} />
         </div>
         
         <div className="flex items-center border-r border-slate-700 px-1">
