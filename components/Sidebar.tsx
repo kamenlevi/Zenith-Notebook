@@ -104,9 +104,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <BookIcon className="mr-2 shrink-0 h-4 w-4"/>
                     <span className="text-sm truncate pr-6">{subject.name}</span>
                 </button>
-                <button 
+                <button
                     onClick={() => onSubjectActions(subject.id)}
-                    className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-full text-slate-500 hover:bg-slate-700 hover:text-slate-200 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-full text-slate-500 hover:bg-slate-700 hover:text-slate-200 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity"
                     aria-label={`Actions for ${subject.name}`}
                 >
                     <EllipsisVerticalIcon className="w-4 h-4" />
