@@ -1,5 +1,4 @@
 import React, { useState, useCallback, memo, useRef, useEffect } from 'react';
-import { Modal } from './Modal';
 import { XIcon } from './Icons';
 
 // A-Z, a-z

@@ -8,7 +8,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { PageSettingsModal } from './components/PageSettingsModal';
 import { CreateFontModal } from './components/CreateFontModal';
 import { ToolType } from './types';
-import type { Subject, Theme, PageBackground, CustomFont, PageFormat, AppSettings, ImageObject } from './types';
+import type { Subject, PageBackground, CustomFont, PageFormat, AppSettings, ImageObject } from './types';
 
 const LOCAL_STORAGE_KEY_SUBJECTS = 'zenith_notebook_subjects';
 const LOCAL_STORAGE_KEY_SETTINGS = 'zenith_notebook_settings';

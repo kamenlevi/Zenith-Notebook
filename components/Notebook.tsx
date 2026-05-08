@@ -182,7 +182,7 @@ export const Notebook = forwardRef<
 
   const notebookStateRef = useRef({
     subject, toolSettings, transform, drawingObjects, images, customFonts,
-    fontImageCache, isDrawing, editingText, getLineHeight: (s: Subject): number => 0,
+    fontImageCache, isDrawing, editingText, getLineHeight: (_s: Subject): number => 0,
     history, historyIndex, numPages, totalHeight
   });
 
@@ -777,7 +777,7 @@ export const Notebook = forwardRef<
         const { numPages } = notebookStateRef.current;
         const fullCanvas = await renderFullCanvas();
         if (!fullCanvas) { alert("Failed to prepare pages."); setIsPreparingPrint(false); return; }
-        const pagesToPrint = [];
+        const pagesToPrint: number[] = [];
         try {
             pageSelection.split(',').forEach(p => p.includes('-') ? (() => {const [s,e]=p.split('-').map(Number);for(let i=s;i<=e;i++)pagesToPrint.push(i)})() : pagesToPrint.push(Number(p)))
         } catch (e) { alert("Invalid page format."); setIsPreparingPrint(false); return; }
