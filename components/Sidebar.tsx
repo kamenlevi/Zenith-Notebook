@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Subject } from '../types';
-import { PlusIcon, BookIcon, SettingsIcon, EllipsisVerticalIcon, ArrowUpTrayIcon as PublishIcon } from './Icons';
+import { PlusIcon, BookIcon, SettingsIcon, EllipsisVerticalIcon } from './Icons';
 
 interface SidebarProps {
   subjects: Subject[];

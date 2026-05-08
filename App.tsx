@@ -111,7 +111,7 @@ const App: React.FC = () => {
     if (hash.startsWith('#data=')) {
       try {
         const base64Data = hash.substring(6);
-        const jsonData = decodeURIComponent(escape(atob(base64Data)));
+        const jsonData = new TextDecoder().decode(Uint8Array.from(atob(base64Data), c => c.charCodeAt(0)));
         const sharedSubjectData = JSON.parse(jsonData);
 
         if (sharedSubjectData.name && typeof sharedSubjectData.pageCount === 'number') {

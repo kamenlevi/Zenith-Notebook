@@ -34,7 +34,7 @@ export const ShareExportModal: React.FC<ShareExportModalProps> = ({ subject, onC
       lineColor: subject.lineColor,
     };
     const jsonString = JSON.stringify(dataToShare);
-    const base64String = btoa(unescape(encodeURIComponent(jsonString)));
+    const base64String = btoa(String.fromCharCode(...new TextEncoder().encode(jsonString)));
     const url = new URL(window.location.href);
     url.hash = `data=${base64String}`;
     return url.toString();
@@ -94,14 +94,8 @@ export const ShareExportModal: React.FC<ShareExportModalProps> = ({ subject, onC
           const pageCtx = pageCanvas.getContext('2d');
           if (!pageCtx) continue;
 
-          // Extract the single page from the full canvas strip
-          const sourceY = i * PAGE_HEIGHT;
-          if (fullCanvas.height > i * (PAGE_HEIGHT + PAGE_GAP)) { // Handle older saves that might be off
-            const oldSourceY = i * (PAGE_HEIGHT + PAGE_GAP);
-            pageCtx.drawImage(fullCanvas, 0, oldSourceY, PAGE_WIDTH, PAGE_HEIGHT, 0, 0, PAGE_WIDTH, PAGE_HEIGHT);
-          } else {
-            pageCtx.drawImage(fullCanvas, 0, sourceY, PAGE_WIDTH, PAGE_HEIGHT, 0, 0, PAGE_WIDTH, PAGE_HEIGHT);
-          }
+          const sourceY = i * (PAGE_HEIGHT + PAGE_GAP);
+          pageCtx.drawImage(fullCanvas, 0, sourceY, PAGE_WIDTH, PAGE_HEIGHT, 0, 0, PAGE_WIDTH, PAGE_HEIGHT);
           
           const imageData = pageCanvas.toDataURL('image/jpeg', 0.9);
           pdf.addImage(imageData, 'JPEG', 0, 0, pdfWidth, pdfHeight);

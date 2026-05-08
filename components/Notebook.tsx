@@ -144,6 +144,19 @@ export const Notebook = forwardRef<
   ]);
 
   useEffect(() => {
+    return () => {
+      if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
+      if (saveTimeoutRef.current !== null) clearTimeout(saveTimeoutRef.current);
+      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+      if (undoIntervalRef.current) clearInterval(undoIntervalRef.current);
+      if (undoSpeedTimeoutRef.current) clearTimeout(undoSpeedTimeoutRef.current);
+      if (redoTimeoutRef.current) clearTimeout(redoTimeoutRef.current);
+      if (redoIntervalRef.current) clearInterval(redoIntervalRef.current);
+      if (redoSpeedTimeoutRef.current) clearTimeout(redoSpeedTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     onUpdateImages(subject.id, images);
     if (saveTimeoutRef.current !== null) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = window.setTimeout(() => {
