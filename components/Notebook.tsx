@@ -71,6 +71,60 @@ const getStrokeWidth = (tool: ToolType, sliderValue: number): number => {
   }
 };
 
+interface CanvasTextEditorProps {
+  worldX: number;
+  worldY: number;
+  onSubmit: (text: string) => void;
+  onCancel: () => void;
+  settings: ToolSettings;
+  fontSize: number;
+  transform: TransformState;
+  textareaRef: React.RefObject<HTMLTextAreaElement>;
+}
+
+const CanvasTextEditor: React.FC<CanvasTextEditorProps> = ({
+  worldX, worldY, onSubmit, onCancel, settings, fontSize, transform, textareaRef,
+}) => {
+  const lineHeight = fontSize * 1.2;
+  const screenX = worldX * transform.scale + transform.offsetX;
+  const screenY = worldY * transform.scale + transform.offsetY;
+  useEffect(() => { textareaRef.current?.focus(); }, [textareaRef]);
+  const handleSubmit = useCallback(
+    () => onSubmit(textareaRef.current?.value ?? ''),
+    [onSubmit, textareaRef],
+  );
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
+    if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+  };
+  return (
+    <textarea
+      ref={textareaRef}
+      onBlur={handleSubmit}
+      onKeyDown={handleKeyDown}
+      style={{
+        position: 'absolute',
+        top: `${screenY - lineHeight}px`,
+        left: `${screenX}px`,
+        transform: `scale(${transform.scale})`,
+        transformOrigin: 'top left',
+        font: `${fontSize}px ${settings.fontFamily}`,
+        color: settings.color,
+        background: 'transparent',
+        border: 'none',
+        outline: 'none',
+        resize: 'none',
+        overflow: 'hidden',
+        width: `${PAGE_WIDTH}px`,
+        lineHeight: `${lineHeight / fontSize}`,
+        whiteSpace: 'pre-wrap',
+        zIndex: 100,
+      }}
+      autoCapitalize="sentences"
+    />
+  );
+};
+
 export const Notebook = forwardRef<
   { renderFullCanvas: () => Promise<HTMLCanvasElement | null> },
   NotebookProps
@@ -260,9 +314,17 @@ export const Notebook = forwardRef<
         const offscreen = offscreenCanvasRef.current;
         const context = offscreenContextRef.current;
         if (!context) return;
-        
-        offscreen.width = PAGE_WIDTH;
-        offscreen.height = totalHeight;
+
+        // Only resize when dimensions change — assigning canvas.width always clears
+        // the backing store AND resets all context state (composite op, alpha, etc.)
+        if (offscreen.width !== PAGE_WIDTH || offscreen.height !== totalHeight) {
+            offscreen.width = PAGE_WIDTH;
+            offscreen.height = totalHeight;
+        } else {
+            context.clearRect(0, 0, PAGE_WIDTH, totalHeight);
+        }
+        context.globalCompositeOperation = 'source-over';
+        context.globalAlpha = 1;
 
         for(let i = 0; i < numPages; i++) {
             drawPageBackground(context, subject, i, totalHeight);
@@ -738,20 +800,6 @@ export const Notebook = forwardRef<
   const canUndo = !editingText && historyIndex > 0;
   const canRedo = !editingText && historyIndex < history.length - 1;
 
-  const CanvasTextEditor: React.FC<{ worldX: number; worldY: number; onSubmit: (text: string) => void; onCancel: () => void; settings: ToolSettings; fontSize: number; }> = ({ worldX, worldY, onSubmit, onCancel, settings, fontSize }) => {
-    const { transform } = notebookStateRef.current;
-    const lineHeight = fontSize * 1.2;
-    const screenX = (worldX * transform.scale) + transform.offsetX;
-    const screenY = (worldY * transform.scale) + transform.offsetY;
-    useEffect(() => { textareaRef.current?.focus(); }, []);
-    const handleSubmit = useCallback(() => onSubmit(textareaRef.current?.value || ''), [onSubmit]);
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
-      if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
-    };
-    return ( <textarea ref={textareaRef} onBlur={handleSubmit} onKeyDown={handleKeyDown} style={{ position: 'absolute', top: `${screenY - lineHeight}px`, left: `${screenX}px`, transform: `scale(${transform.scale})`, transformOrigin: 'top left', font: `${fontSize}px ${settings.fontFamily}`, color: settings.color, background: 'transparent', border: 'none', outline: 'none', resize: 'none', overflow: 'hidden', width: `${PAGE_WIDTH}px`, lineHeight: `${lineHeight / fontSize}`, whiteSpace: 'pre-wrap', zIndex: 100, }} autoCapitalize="sentences" /> );
-  };
-
   return (
     <div className="flex-1 flex flex-col bg-black overflow-hidden">
       <SizeSlider size={toolSettings.size} onSizeChange={(newSize) => setToolSettings(prev => ({...prev, size: newSize}))} />
@@ -781,7 +829,18 @@ export const Notebook = forwardRef<
       <div ref={viewportRef} className={`flex-1 overflow-hidden ${notebookBgClass} p-0 transition-colors relative cursor-crosshair`}>
           <canvas ref={contentCanvasRef} className="absolute top-0 left-0" />
           <canvas ref={uiCanvasRef} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp} onPointerLeave={handlePointerUp} className="absolute top-0 left-0" style={{ touchAction: 'none' }} />
-           {editingText && <CanvasTextEditor worldX={editingText.x} worldY={editingText.y} onSubmit={handleTextSubmit} onCancel={handleTextCancel} settings={toolSettings} fontSize={editingText.fontSize} />}
+          {editingText && (
+            <CanvasTextEditor
+              worldX={editingText.x}
+              worldY={editingText.y}
+              onSubmit={handleTextSubmit}
+              onCancel={handleTextCancel}
+              settings={toolSettings}
+              fontSize={editingText.fontSize}
+              transform={transform}
+              textareaRef={textareaRef}
+            />
+          )}
       </div>
       {showPrintModal && <PrintModal totalPages={numPages} onClose={() => setShowPrintModal(false)} onPrint={handlePrint} isPreparing={isPreparingPrint} />}
       <input type="file" ref={galleryInputRef} onChange={handleFileSelect} accept="image/*" multiple style={{ display: 'none' }} />

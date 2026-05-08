@@ -48,10 +48,9 @@ export const FontMenu: React.FC<FontMenuProps> = ({ selectedFont, onSelectFont, 
   
   useEffect(() => {
     if (isOpen) {
-      // Focus search input when dropdown opens
-      setTimeout(() => searchInputRef.current?.focus(), 100);
+      requestAnimationFrame(() => searchInputRef.current?.focus());
     } else {
-      setSearchTerm(''); // Reset search on close
+      setSearchTerm('');
     }
   }, [isOpen]);
 

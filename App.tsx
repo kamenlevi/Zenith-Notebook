@@ -34,6 +34,7 @@ const App: React.FC = () => {
   const [isCreateFontModalOpen, setIsCreateFontModalOpen] = useState(false);
   const [isRulerVisible, setIsRulerVisible] = useState(false);
   const notebookRef = useRef<{ renderFullCanvas: () => Promise<HTMLCanvasElement | null> }>(null);
+  const saveSubjectsTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   // Load settings, subjects, and fonts on initial render
   useEffect(() => {
@@ -88,11 +89,17 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Save subjects to localStorage
+  // Save subjects to localStorage — debounced so rapid changes (image drag, stroke
+  // updates) don't hammer storage on every pointer event.
   useEffect(() => {
-    if (settings.autoSave) {
+    if (!settings.autoSave) return;
+    if (saveSubjectsTimerRef.current !== null) clearTimeout(saveSubjectsTimerRef.current);
+    saveSubjectsTimerRef.current = window.setTimeout(() => {
       localStorage.setItem(LOCAL_STORAGE_KEY_SUBJECTS, JSON.stringify(subjects));
-    }
+    }, 1000);
+    return () => {
+      if (saveSubjectsTimerRef.current !== null) clearTimeout(saveSubjectsTimerRef.current);
+    };
   }, [subjects, settings.autoSave]);
   
   // Save settings to localStorage
