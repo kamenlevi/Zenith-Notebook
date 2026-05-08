@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Lora', serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.custom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  background: #f1f5f9;
+  cursor: pointer;
+  border-radius: 50%;
+  margin-top: -6px;
+}
+
+.custom-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  background: #f1f5f9;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.1s ease-out forwards;
+}
+
+@keyframes fadeInBackdrop {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fade-in-backdrop {
+  animation: fadeInBackdrop 0.2s ease-out forwards;
+}
+
+#print-container {
+  display: none;
+}
+
+@media print {
+  body > #root {
+    display: none !important;
+  }
+  #print-container {
+    display: block !important;
+  }
+  @page {
+    size: auto;
+    margin: 0;
+  }
+  .print-page {
+    width: 100%;
+    height: auto;
+    display: block;
+    page-break-after: always;
+  }
+}

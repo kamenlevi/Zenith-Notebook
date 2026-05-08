@@ -3,8 +3,28 @@ import type { Subject } from '../types';
 import { Modal } from './Modal';
 import { SpinnerIcon, ClipboardIcon, ArrowDownTrayIcon } from './Icons';
 
-// Assume jspdf is loaded globally from index.html
+// jsPDF is lazy-loaded from CDN only when the user clicks Export PDF.
+// This avoids ~40KB of unused JS on every page load.
 declare const jspdf: any;
+const JSPDF_CDN_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+
+let jsPdfLoadPromise: Promise<void> | null = null;
+const loadJsPdf = (): Promise<void> => {
+  if (typeof (window as any).jspdf !== 'undefined') return Promise.resolve();
+  if (jsPdfLoadPromise) return jsPdfLoadPromise;
+  jsPdfLoadPromise = new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = JSPDF_CDN_URL;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => {
+      jsPdfLoadPromise = null;
+      reject(new Error('Failed to load jsPDF'));
+    };
+    document.head.appendChild(script);
+  });
+  return jsPdfLoadPromise;
+};
 
 interface ShareExportModalProps {
   subject: Subject;
@@ -59,6 +79,16 @@ export const ShareExportModal: React.FC<ShareExportModalProps> = ({ subject, onC
     }
 
     setIsExporting(true);
+    setExportMessage(`Loading PDF library...`);
+
+    try {
+      await loadJsPdf();
+    } catch {
+      alert('Could not load the PDF library. Check your connection and try again.');
+      setIsExporting(false);
+      return;
+    }
+
     setExportMessage(`Rendering all pages for PDF...`);
 
     // Allow UI to update before blocking operation
@@ -71,7 +101,7 @@ export const ShareExportModal: React.FC<ShareExportModalProps> = ({ subject, onC
       }
 
       setExportMessage(`Generating PDF...`);
-      
+
       const { jsPDF } = jspdf;
       const isLandscape = subject.pageFormat === 'Widescreen';
       const format = (subject.pageFormat === 'A4' || subject.pageFormat === 'Widescreen') ? 'a4' : 'letter';

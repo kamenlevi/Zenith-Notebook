@@ -25,9 +25,27 @@ const standardFonts = [
   // Monospace
   'Courier New', 'Source Code Pro', 'Inconsolata', 'Space Mono',
   // Display & Script
-  'Bebas Neue', 'Caveat', 'Comfortaa', 'Dancing Script', 'Josefin Sans', 'Lobster', 'Pacifico', 
+  'Bebas Neue', 'Caveat', 'Comfortaa', 'Dancing Script', 'Josefin Sans', 'Lobster', 'Pacifico',
   'Shadows Into Light', 'Indie Flower', 'Patrick Hand', 'Playball', 'BioRhyme',
 ].sort();
+
+// Lora is preloaded in index.html as the default. The full Google Fonts catalog
+// is only injected the first time the user opens the font menu.
+const SYSTEM_FONTS = new Set(['Arial', 'Verdana', 'Georgia', 'Times New Roman', 'Courier New']);
+const FULL_CATALOG_LINK_ID = 'zenith-google-fonts-catalog';
+
+const ensureGoogleFontsLoaded = () => {
+  if (document.getElementById(FULL_CATALOG_LINK_ID)) return;
+  const families = standardFonts
+    .filter(f => !SYSTEM_FONTS.has(f) && f !== 'Lora')
+    .map(f => `family=${f.replace(/ /g, '+')}:wght@400;700`)
+    .join('&');
+  const link = document.createElement('link');
+  link.id = FULL_CATALOG_LINK_ID;
+  link.rel = 'stylesheet';
+  link.href = `https://fonts.googleapis.com/css2?${families}&display=swap`;
+  document.head.appendChild(link);
+};
 
 
 export const FontMenu: React.FC<FontMenuProps> = ({ selectedFont, onSelectFont, customFonts, onCreateNew }) => {
@@ -45,9 +63,10 @@ export const FontMenu: React.FC<FontMenuProps> = ({ selectedFont, onSelectFont, 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-  
+
   useEffect(() => {
     if (isOpen) {
+      ensureGoogleFontsLoaded();
       requestAnimationFrame(() => searchInputRef.current?.focus());
     } else {
       setSearchTerm('');
