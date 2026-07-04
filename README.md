@@ -1,5 +1,6 @@
 # Zenith Notebook
-///Unfinished and currently unsupported
+-Unfinished and currently unsupported
+
 A fast, canvas-based digital notebook that runs entirely in the browser — no account, no server, no install. Works on desktop, iPad, and mobile.
 
 ---
