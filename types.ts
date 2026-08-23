@@ -49,6 +49,14 @@ export interface StrokeObject {
   size: number;
   opacity: number;
   points: StrokePoint[];
+  /**
+   * Whether width should be derived from velocity rather than from the
+   * recorded pressure. Decided once, from the device that drew the stroke,
+   * and stored — re-deciding it at render time made a committed stroke a
+   * different width from the one the user just watched themselves draw.
+   * Absent on strokes saved before this was recorded: treat as false.
+   */
+  simulatePressure?: boolean;
   /** Cached world-space bounds, inflated by half the stroke width. */
   bounds: Bounds;
 }

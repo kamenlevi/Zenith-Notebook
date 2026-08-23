@@ -153,7 +153,7 @@ const GlyphPad = memo(
             tool: 'pen',
             size: 22,
             pressureEnabled: false,
-            hasRealPressure: false,
+            simulatePressure: false,
             complete: true,
           }),
         );

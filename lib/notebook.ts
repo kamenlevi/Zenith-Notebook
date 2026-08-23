@@ -164,6 +164,9 @@ export const migrateLegacySubject = async (legacy: any): Promise<Notebook> => {
       opacity:
         tool === 'highlighter' ? 0.38 : tool === 'pencil' ? 0.82 : Number(item.globalAlpha) || 1,
       points,
+      // v1 recorded no pressure and no timing, so there is nothing to
+      // simulate from: these stay uniform, exactly as they looked before.
+      simulatePressure: false,
       bounds: strokeBounds({ points, size }),
     };
     objects.push(stroke);

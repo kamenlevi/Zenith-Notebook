@@ -189,9 +189,9 @@ export const drawStroke = (
     tool: stroke.tool,
     size: stroke.size,
     pressureEnabled,
-    // Stored strokes keep whatever pressure was captured; treating them as
-    // "real" preserves the shape they had when drawn, whatever the device.
-    hasRealPressure: true,
+    // Replay the decision made when the stroke was drawn. Older strokes
+    // predate the field and were captured with a flat pressure of 0.5.
+    simulatePressure: stroke.simulatePressure ?? false,
     complete: true,
   });
 

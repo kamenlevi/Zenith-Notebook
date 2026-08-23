@@ -142,7 +142,8 @@ interface LiveStroke {
   size: number;
   opacity: number;
   points: StrokePoint[];
-  hasRealPressure: boolean;
+  /** The device reported no usable pressure, so width follows velocity. */
+  simulatePressure: boolean;
   /** Set when the stroke is being drawn along the ruler. */
   snapAngle: number | null;
   snapOrigin: { x: number; y: number } | null;
@@ -627,12 +628,16 @@ export class NotebookEngine {
 
     // Live ink (the eraser is handled on the base layer instead).
     if (this.live && this.live.tool !== 'eraser') {
+      // Identical options to the committed stroke, `complete` included, so
+      // what the user watches themselves draw is exactly what gets kept.
+      // Rendering the preview as an unfinished stroke made it visibly change
+      // width the instant the pen lifted.
       const path = strokePath(this.live.points, {
         tool: this.live.tool,
         size: this.live.size,
         pressureEnabled: this.settings.pressureEnabled,
-        hasRealPressure: this.live.hasRealPressure,
-        complete: false,
+        simulatePressure: this.live.simulatePressure,
+        complete: true,
       });
       ctx.globalAlpha = this.live.opacity;
       ctx.fillStyle = this.live.color;
@@ -1043,6 +1048,7 @@ export class NotebookEngine {
       size: live.size,
       opacity: this.inkOpacity(live.tool),
       points,
+      simulatePressure: live.simulatePressure,
       bounds: strokeBounds({ points, size: live.size }),
     };
   }
@@ -1377,7 +1383,7 @@ export class NotebookEngine {
       size,
       opacity: this.inkOpacity(tool),
       points: [{ x: world.x, y: world.y, p: readPressure(event) }],
-      hasRealPressure: isPressureCapable(event),
+      simulatePressure: !isPressureCapable(event),
       snapAngle,
       snapOrigin,
     };

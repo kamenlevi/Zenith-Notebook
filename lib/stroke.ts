@@ -19,10 +19,15 @@ import type { InkTool, StrokePoint } from '../types';
 export interface StrokeStyleOptions {
   tool: InkTool;
   size: number;
-  /** Whether reported stylus pressure should modulate width. */
+  /** User setting: let width vary at all. Off means a perfectly uniform line. */
   pressureEnabled: boolean;
-  /** True when the input device reports real pressure (Apple Pencil, etc). */
-  hasRealPressure: boolean;
+  /**
+   * Derive width from velocity because the device reported no usable pressure
+   * (mouse, trackpad, finger, and styluses that report 0 on first contact).
+   * This must be identical for the live preview and the committed stroke, so
+   * it is stored on the stroke rather than re-derived per render.
+   */
+  simulatePressure: boolean;
   /** False while the stroke is still being drawn, so the end cap stays open. */
   complete?: boolean;
 }
@@ -47,13 +52,13 @@ export const freehandOptions = ({
   tool,
   size,
   pressureEnabled,
-  hasRealPressure,
+  simulatePressure: simulate,
   complete = true,
 }: StrokeStyleOptions): FreehandOptions => {
-  // Without a stylus there is no pressure signal, so let perfect-freehand
-  // derive one from velocity rather than flattening the stroke entirely.
-  const simulatePressure = !hasRealPressure;
-  const respondsToPressure = pressureEnabled || simulatePressure;
+  // Turning the setting off means a genuinely uniform line: no pressure
+  // response and no velocity simulation either.
+  const simulatePressure = pressureEnabled && simulate;
+  const respondsToPressure = pressureEnabled;
 
   switch (tool) {
     case 'pen':

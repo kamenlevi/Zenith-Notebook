@@ -227,7 +227,7 @@ const StrokePreview: React.FC<{ tool: ToolType; size: number; color: string }> =
       tool: tool === 'eraser' ? 'pen' : (tool as InkTool),
       size,
       pressureEnabled: true,
-      hasRealPressure: true,
+      simulatePressure: false,
       complete: true,
     });
     ctx.globalAlpha = tool === 'highlighter' ? 0.38 : tool === 'pencil' ? 0.82 : 1;
