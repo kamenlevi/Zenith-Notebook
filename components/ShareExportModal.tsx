@@ -1,193 +1,175 @@
-import React, { useState } from 'react';
-import type { Subject } from '../types';
-import { Modal } from './Modal';
-import { SpinnerIcon, ClipboardIcon, ArrowDownTrayIcon } from './Icons';
+import React, { useMemo, useState } from 'react';
+import type { CustomFont, Notebook } from '../types';
+import { Modal, SecondaryButton } from './Modal';
+import { ArrowDownTrayIcon, ClipboardIcon, SpinnerIcon } from './Icons';
+import {
+  buildShareLink,
+  exportNotebookFile,
+  exportPdf,
+  exportPng,
+  parsePageRange,
+} from '../lib/exporting';
 
-// jsPDF is lazy-loaded from CDN only when the user clicks Export PDF.
-// This avoids ~40KB of unused JS on every page load.
-declare const jspdf: any;
-const JSPDF_CDN_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-
-let jsPdfLoadPromise: Promise<void> | null = null;
-const loadJsPdf = (): Promise<void> => {
-  if (typeof (window as any).jspdf !== 'undefined') return Promise.resolve();
-  if (jsPdfLoadPromise) return jsPdfLoadPromise;
-  jsPdfLoadPromise = new Promise<void>((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = JSPDF_CDN_URL;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => {
-      jsPdfLoadPromise = null;
-      reject(new Error('Failed to load jsPDF'));
-    };
-    document.head.appendChild(script);
-  });
-  return jsPdfLoadPromise;
-};
-
-interface ShareExportModalProps {
-  subject: Subject;
+interface Props {
+  notebook: Notebook;
+  customFonts: CustomFont[];
+  pressureEnabled: boolean;
   onClose: () => void;
-  renderCanvas?: () => Promise<HTMLCanvasElement | null>;
+  onNotify: (message: string, tone?: 'info' | 'success' | 'error') => void;
 }
 
-const PAGE_HEIGHT = 1056;
-const PAGE_WIDTH = 816;
-const PAGE_GAP = 24;
+export const ShareExportModal: React.FC<Props> = ({
+  notebook,
+  customFonts,
+  pressureEnabled,
+  onClose,
+  onNotify,
+}) => {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [range, setRange] = useState(`1-${notebook.pageCount}`);
 
-export const ShareExportModal: React.FC<ShareExportModalProps> = ({ subject, onClose, renderCanvas }) => {
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportMessage, setExportMessage] = useState('');
-  const [copySuccess, setCopySuccess] = useState(false);
+  const share = useMemo(() => buildShareLink(notebook), [notebook]);
+  const parsedRange = useMemo(
+    () => parsePageRange(range, notebook.pageCount),
+    [range, notebook.pageCount],
+  );
 
-  const generateShareLink = () => {
-    const dataToShare = {
-      name: subject.name,
-      canvasState: subject.canvasState,
-      images: subject.images,
-      pageCount: subject.pageCount,
-      theme: subject.theme,
-      pageFormat: subject.pageFormat,
-      pageBackground: subject.pageBackground,
-      lineSpacingCm: subject.lineSpacingCm,
-      lineColor: subject.lineColor,
-    };
-    const jsonString = JSON.stringify(dataToShare);
-    const base64String = btoa(String.fromCharCode(...new TextEncoder().encode(jsonString)));
-    const url = new URL(window.location.href);
-    url.hash = `data=${base64String}`;
-    return url.toString();
-  };
+  const renderContext = { customFonts, pressureEnabled };
 
-  const shareLink = generateShareLink();
-
-  const handleCopyToClipboard = async () => {
+  const run = async (label: string, task: () => Promise<void>) => {
+    setBusy(label);
     try {
-      await navigator.clipboard.writeText(shareLink);
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
+      await task();
     } catch (err) {
-      alert('Failed to copy link.');
+      onNotify(err instanceof Error ? err.message : 'Export failed.', 'error');
+    } finally {
+      setBusy(null);
     }
   };
 
-  const handleExportPDF = async () => {
-    if (!renderCanvas) {
-      alert("Export function is not available at the moment.");
-      return;
-    }
-
-    setIsExporting(true);
-    setExportMessage(`Loading PDF library...`);
-
+  const copyLink = async () => {
+    if (!share.url) return;
     try {
-      await loadJsPdf();
+      await navigator.clipboard.writeText(share.url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch {
-      alert('Could not load the PDF library. Check your connection and try again.');
-      setIsExporting(false);
-      return;
+      onNotify('Your browser blocked clipboard access. Select the link and copy it manually.', 'error');
     }
-
-    setExportMessage(`Rendering all pages for PDF...`);
-
-    // Allow UI to update before blocking operation
-    setTimeout(async () => {
-      const fullCanvas = await renderCanvas();
-      if (!fullCanvas) {
-        alert("Failed to prepare pages for exporting.");
-        setIsExporting(false);
-        return;
-      }
-
-      setExportMessage(`Generating PDF...`);
-
-      const { jsPDF } = jspdf;
-      const isLandscape = subject.pageFormat === 'Widescreen';
-      const format = (subject.pageFormat === 'A4' || subject.pageFormat === 'Widescreen') ? 'a4' : 'letter';
-      const orientation = isLandscape ? 'landscape' : 'portrait';
-
-      const pdf = new jsPDF({
-        orientation: orientation,
-        unit: 'px',
-        format: format,
-      });
-      
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-
-      for (let i = 0; i < subject.pageCount; i++) {
-          if (i > 0) pdf.addPage();
-          const pageCanvas = document.createElement('canvas');
-          pageCanvas.width = PAGE_WIDTH;
-          pageCanvas.height = PAGE_HEIGHT;
-          const pageCtx = pageCanvas.getContext('2d');
-          if (!pageCtx) continue;
-
-          const sourceY = i * (PAGE_HEIGHT + PAGE_GAP);
-          pageCtx.drawImage(fullCanvas, 0, sourceY, PAGE_WIDTH, PAGE_HEIGHT, 0, 0, PAGE_WIDTH, PAGE_HEIGHT);
-          
-          const imageData = pageCanvas.toDataURL('image/jpeg', 0.9);
-          pdf.addImage(imageData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-      }
-      
-      pdf.save(`${subject.name}.pdf`);
-      
-      setIsExporting(false);
-      onClose();
-    }, 10);
   };
 
   return (
-    <Modal title={`Share & Export "${subject.name}"`} onClose={onClose}>
-      <div className="space-y-6">
-        
-        <div>
-          <h4 className="font-medium text-slate-300">Share a copy</h4>
-          <p className="text-sm text-slate-400 mb-3">
-            Anyone with this link can import a snapshot of this subject. Changes you make later won't be reflected.
+    <Modal title="Share and export" onClose={onClose} size="lg">
+      <div className="space-y-7">
+        <section>
+          <h4 className="font-medium text-slate-200">Save as a file</h4>
+          <p className="mt-1 text-sm text-slate-400">
+            A .zenith file holds everything, images included. Open it on any device with Settings →
+            Import.
           </p>
-          <div className="flex items-center gap-2">
+          <SecondaryButton
+            className="mt-3 flex items-center gap-2"
+            disabled={busy !== null}
+            onClick={() =>
+              run('file', async () => {
+                await exportNotebookFile(notebook);
+                onNotify('Notebook file saved.', 'success');
+              })
+            }
+          >
+            {busy === 'file' ? <SpinnerIcon className="h-4 w-4" /> : <ArrowDownTrayIcon className="h-4 w-4" />}
+            Save .zenith file
+          </SecondaryButton>
+        </section>
+
+        <div className="h-px bg-slate-800" />
+
+        <section>
+          <h4 className="font-medium text-slate-200">Export pages</h4>
+          <label className="mt-3 block">
+            <span className="mb-2 block text-sm text-slate-400">Which pages</span>
             <input
               type="text"
-              readOnly
-              value={shareLink}
-              className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-slate-400 text-sm truncate"
+              value={range}
+              onChange={(e) => setRange(e.target.value)}
+              placeholder="e.g. 1, 3-5"
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-200 outline-none focus:border-sky-500"
             />
-            <button 
-              onClick={handleCopyToClipboard}
-              className="bg-slate-700 hover:bg-slate-600 text-white font-semibold px-3 py-2 rounded-md transition-colors text-sm flex-shrink-0"
-              aria-label="Copy to clipboard"
+          </label>
+          {parsedRange.error && <p className="mt-2 text-sm text-red-400">{parsedRange.error}</p>}
+
+          <div className="mt-3 flex flex-wrap gap-3">
+            <SecondaryButton
+              className="flex items-center gap-2"
+              disabled={busy !== null || !!parsedRange.error}
+              onClick={() =>
+                run('pdf', async () => {
+                  await exportPdf(notebook, parsedRange.pages, renderContext, (message) =>
+                    setBusy(message),
+                  );
+                  onNotify('PDF saved.', 'success');
+                })
+              }
             >
-              {copySuccess ? 'Copied!' : <ClipboardIcon className="w-5 h-5" />}
-            </button>
+              {busy === 'pdf' ? <SpinnerIcon className="h-4 w-4" /> : <ArrowDownTrayIcon className="h-4 w-4" />}
+              Export PDF
+            </SecondaryButton>
+            <SecondaryButton
+              className="flex items-center gap-2"
+              disabled={busy !== null || !!parsedRange.error}
+              onClick={() =>
+                run('png', async () => {
+                  await exportPng(notebook, parsedRange.pages, renderContext);
+                  onNotify('Images saved.', 'success');
+                })
+              }
+            >
+              {busy === 'png' ? <SpinnerIcon className="h-4 w-4" /> : <ArrowDownTrayIcon className="h-4 w-4" />}
+              Export PNG
+            </SecondaryButton>
           </div>
-        </div>
-
-        <div className="border-t border-slate-700"></div>
-
-        <div>
-          <h4 className="font-medium text-slate-300">Export</h4>
-          <p className="text-sm text-slate-400 mb-3">
-            Download a high-quality copy of your notebook to your device.
-          </p>
-          {isExporting ? (
-             <div className="flex items-center justify-center h-16 bg-slate-900 rounded-md">
-                <SpinnerIcon className="w-5 h-5" />
-                <p className="ml-3 text-slate-400">{exportMessage}</p>
-             </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-1 gap-3">
-                <button 
-                  onClick={handleExportPDF}
-                  className="bg-slate-700 hover:bg-slate-600 text-white font-semibold px-4 py-2 rounded-md transition-colors text-sm flex items-center justify-center gap-2"
-                >
-                  <ArrowDownTrayIcon className="w-5 h-5" />
-                  <span>Export as PDF</span>
-                </button>
-            </div>
+          {busy && busy !== 'file' && (
+            <p className="mt-2 text-sm text-slate-400">
+              {busy === 'pdf' || busy === 'png' ? 'Working…' : busy}
+            </p>
           )}
-        </div>
+        </section>
+
+        <div className="h-px bg-slate-800" />
+
+        <section>
+          <h4 className="font-medium text-slate-200">Share a link</h4>
+          <p className="mt-1 text-sm text-slate-400">
+            The whole notebook is encoded in the link itself — nothing is uploaded anywhere. Anyone
+            opening it gets their own independent copy.
+          </p>
+
+          {share.url ? (
+            <>
+              <div className="mt-3 flex items-center gap-2">
+                <input
+                  readOnly
+                  value={share.url}
+                  onFocus={(e) => e.currentTarget.select()}
+                  className="w-full truncate rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-400 outline-none"
+                />
+                <SecondaryButton className="flex shrink-0 items-center gap-2" onClick={copyLink}>
+                  <ClipboardIcon className="h-4 w-4" />
+                  {copied ? 'Copied' : 'Copy'}
+                </SecondaryButton>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                {Math.round(share.bytes / 1024)} KB link
+                {share.reason ? ` · ${share.reason}` : ''}
+              </p>
+            </>
+          ) : (
+            <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+              {share.reason}
+            </p>
+          )}
+        </section>
       </div>
     </Modal>
   );

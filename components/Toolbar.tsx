@@ -1,266 +1,378 @@
-import React, { useRef, useState, useEffect } from 'react';
-import type { ToolSettings, Theme, CustomFont } from '../types';
-import { ToolType } from '../types';
-import { PenIcon, PencilIcon, HighlighterIcon, EraserIcon, AddPageIcon, MoonIcon, SunIcon, PrintIcon, UndoIcon, RedoIcon, PlusIcon, Bars3Icon, TextIcon, DocumentArrowUpIcon, PhotoIcon, CameraIcon, RulerIcon } from './Icons';
-import { FontMenu } from './FontMenu';
+import React, { useEffect, useRef, useState } from 'react';
+import type { CustomFont, ToolSettings, ToolType, Theme } from '../types';
+import { ToolOptions } from './ToolOptions';
+import {
+  Bars3Icon,
+  CameraIcon,
+  DocumentArrowUpIcon,
+  EraserIcon,
+  HighlighterIcon,
+  LassoIcon,
+  MoonIcon,
+  PenIcon,
+  PencilIcon,
+  PhotoIcon,
+  PrintIcon,
+  RedoIcon,
+  RulerIcon,
+  ShareIcon,
+  SunIcon,
+  TextIcon,
+  UndoIcon,
+  EllipsisVerticalIcon,
+} from './Icons';
 
 interface ToolbarProps {
   settings: ToolSettings;
-  onSettingsChange: React.Dispatch<React.SetStateAction<ToolSettings>>;
-  onAddPage: () => void;
-  onAddFile: (source: 'gallery' | 'camera' | 'files') => void;
+  onSettingsChange: (updater: (prev: ToolSettings) => ToolSettings) => void;
+  customFonts: CustomFont[];
+  onCreateFont: () => void;
   theme: Theme;
-  onThemeChange: () => void;
-  onPrint: () => void;
-  onUndoPress: () => void;
-  onUndoRelease: () => void;
-  onRedoPress: () => void;
-  onRedoRelease: () => void;
+  onToggleTheme: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
-  onOpenPageStyleSettings: () => void;
-  customFonts: CustomFont[];
-  onOpenCreateFont: () => void;
-  isRulerVisible: boolean;
+  onAddImage: (source: 'library' | 'camera') => void;
+  onOpenPageStyle: () => void;
+  onOpenShare: () => void;
+  onPrint: () => void;
+  rulerVisible: boolean;
   onToggleRuler: () => void;
 }
 
-const baseColors = ['#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7'];
+const TOOLS: { tool: ToolType; Icon: React.FC<{ className?: string }>; label: string }[] = [
+  { tool: 'pen', Icon: PenIcon, label: 'Pen' },
+  { tool: 'pencil', Icon: PencilIcon, label: 'Pencil' },
+  { tool: 'highlighter', Icon: HighlighterIcon, label: 'Highlighter' },
+  { tool: 'eraser', Icon: EraserIcon, label: 'Eraser' },
+  { tool: 'text', Icon: TextIcon, label: 'Text' },
+  { tool: 'select', Icon: LassoIcon, label: 'Select' },
+];
 
-interface ToolButtonProps {
-  tool: ToolType;
-  Icon: React.FC<{ className?: string }>;
-  activeTool: ToolType;
-  onSelect: (tool: ToolType) => void;
-}
-
-const ToolButton: React.FC<ToolButtonProps> = ({ tool, Icon, activeTool, onSelect }) => (
+/** Colour chip shown under the active ink tool. */
+const ToolButton: React.FC<{
+  active: boolean;
+  label: string;
+  color?: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}> = ({ active, label, color, onClick, children }) => (
   <button
-    onClick={() => onSelect(tool)}
-    className={`p-3 rounded-md transition-colors ${
-      activeTool === tool ? 'bg-slate-600 text-white' : 'hover:bg-slate-700'
+    onClick={onClick}
+    title={label}
+    aria-label={label}
+    aria-pressed={active}
+    className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors ${
+      active ? 'bg-slate-700 text-white shadow-inner' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
     }`}
-    aria-label={`Select ${tool} tool`}
   >
-    <Icon />
+    {children}
+    {color && (
+      <span
+        className="absolute bottom-1 left-1/2 h-1.5 w-5 -translate-x-1/2 rounded-full border border-black/25"
+        style={{ backgroundColor: color }}
+      />
+    )}
   </button>
 );
 
-export const Toolbar: React.FC<ToolbarProps> = ({ 
-  settings, 
-  onSettingsChange, 
-  onAddPage, 
-  onAddFile,
-  theme, 
-  onThemeChange, 
-  onPrint, 
-  onUndoPress, 
-  onUndoRelease,
-  onRedoPress,
-  onRedoRelease,
-  canUndo, 
-  canRedo,
-  onOpenPageStyleSettings,
+const ActionButton: React.FC<{
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  children: React.ReactNode;
+}> = ({ label, onClick, disabled, active, children }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    title={label}
+    aria-label={label}
+    aria-pressed={active}
+    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors disabled:opacity-30 ${
+      active
+        ? 'bg-slate-700 text-white'
+        : 'text-slate-400 enabled:hover:bg-slate-800 enabled:hover:text-slate-100'
+    }`}
+  >
+    {children}
+  </button>
+);
+
+export const Toolbar: React.FC<ToolbarProps> = ({
+  settings,
+  onSettingsChange,
   customFonts,
-  onOpenCreateFont,
-  isRulerVisible,
+  onCreateFont,
+  theme,
+  onToggleTheme,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+  onAddImage,
+  onOpenPageStyle,
+  onOpenShare,
+  onPrint,
+  rulerVisible,
   onToggleRuler,
 }) => {
-  const customColorInputRef = useRef<HTMLInputElement>(null);
-  const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
-  const fileMenuRef = useRef<HTMLDivElement>(null);
+  const [openPopover, setOpenPopover] = useState<'tool' | 'insert' | 'more' | null>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const [compact, setCompact] = useState(false);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (fileMenuRef.current && !fileMenuRef.current.contains(event.target as Node)) {
-        setIsFileMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
+    const check = () => setCompact(window.innerWidth < 860);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
   }, []);
 
-  const handleToolChange = (tool: ToolType) => {
-    onSettingsChange(prev => ({ ...prev, tool }));
+  useEffect(() => {
+    if (!openPopover) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (barRef.current && !barRef.current.contains(event.target as Node)) setOpenPopover(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenPopover(null);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [openPopover]);
+
+  const selectTool = (tool: ToolType) => {
+    if (settings.tool === tool && tool !== 'select') {
+      // Tapping the active tool reveals its options, the way a real pen case
+      // works: pick it up once, then adjust it.
+      setOpenPopover((prev) => (prev === 'tool' ? null : 'tool'));
+      return;
+    }
+    onSettingsChange((prev) => ({ ...prev, tool }));
+    setOpenPopover(null);
   };
 
-  const handleColorChange = (color: string) => {
-    onSettingsChange(prev => ({ ...prev, color }));
+  const chipColor = (tool: ToolType) => {
+    if (tool === 'select' || tool === 'eraser') return undefined;
+    return settings.colors[tool as 'pen' | 'pencil' | 'highlighter' | 'text'];
   };
 
-  const handleFontChange = (fontFamily: string) => {
-    onSettingsChange(prev => ({ ...prev, fontFamily }));
-  };
-
-  const showColorPalette = [ToolType.Pen, ToolType.Pencil, ToolType.Highlighter, ToolType.Text].includes(settings.tool);
-  const presetColors = [theme === 'light' ? '#000000' : '#FFFFFF', ...baseColors];
-  const isCustomColor = !presetColors.includes(settings.color);
+  const extras = (
+    <>
+      <ActionButton label="Ruler" active={rulerVisible} onClick={onToggleRuler}>
+        <RulerIcon className="h-5 w-5" />
+      </ActionButton>
+      <ActionButton label="Page style" onClick={onOpenPageStyle}>
+        <Bars3Icon className="h-5 w-5" />
+      </ActionButton>
+      <ActionButton label="Share and export" onClick={onOpenShare}>
+        <ShareIcon className="h-5 w-5" />
+      </ActionButton>
+      <ActionButton label="Print" onClick={onPrint}>
+        <PrintIcon className="h-5 w-5" />
+      </ActionButton>
+      <ActionButton
+        label={theme === 'light' ? 'Switch to dark paper' : 'Switch to light paper'}
+        onClick={onToggleTheme}
+      >
+        {theme === 'light' ? <MoonIcon className="h-5 w-5" /> : <SunIcon className="h-5 w-5" />}
+      </ActionButton>
+    </>
+  );
 
   return (
-    <div className="flex justify-center p-2 border-b border-slate-800">
-      <div className="flex items-center gap-2 bg-slate-800/80 backdrop-blur-lg border border-slate-700 rounded-xl p-2 flex-wrap justify-center">
-        <div className="flex items-center border-r border-slate-700 pr-2">
-          <ToolButton tool={ToolType.Pen} Icon={PenIcon} activeTool={settings.tool} onSelect={handleToolChange} />
-          <ToolButton tool={ToolType.Pencil} Icon={PencilIcon} activeTool={settings.tool} onSelect={handleToolChange} />
-          <ToolButton tool={ToolType.Highlighter} Icon={HighlighterIcon} activeTool={settings.tool} onSelect={handleToolChange} />
-          <ToolButton tool={ToolType.Text} Icon={TextIcon} activeTool={settings.tool} onSelect={handleToolChange} />
-          <ToolButton tool={ToolType.Eraser} Icon={EraserIcon} activeTool={settings.tool} onSelect={handleToolChange} />
-        </div>
-        
-        <div className="flex items-center border-r border-slate-700 px-1">
-          <button 
-            onMouseDown={onUndoPress}
-            onTouchStart={(e) => { e.preventDefault(); onUndoPress(); }}
-            onMouseUp={onUndoRelease}
-            onMouseLeave={onUndoRelease}
-            onTouchEnd={onUndoRelease}
-            onTouchCancel={onUndoRelease}
-            disabled={!canUndo} 
-            className="p-3 rounded-md transition-colors text-slate-300 enabled:hover:bg-slate-700 disabled:opacity-50" 
-            aria-label="Undo"
+    <div
+      ref={barRef}
+      className="relative z-30 flex shrink-0 items-center gap-1 border-b border-slate-800 bg-slate-950 px-2 py-1.5"
+    >
+      <div className="flex items-center gap-0.5">
+        {TOOLS.map(({ tool, Icon, label }) => (
+          <ToolButton
+            key={tool}
+            active={settings.tool === tool}
+            label={label}
+            color={settings.tool === tool ? chipColor(tool) : undefined}
+            onClick={() => selectTool(tool)}
           >
-              <UndoIcon />
-          </button>
-          <button 
-            onMouseDown={onRedoPress}
-            onTouchStart={(e) => { e.preventDefault(); onRedoPress(); }}
-            onMouseUp={onRedoRelease}
-            onMouseLeave={onRedoRelease}
-            onTouchEnd={onRedoRelease}
-            onTouchCancel={onRedoRelease}
-            disabled={!canRedo} 
-            className="p-3 rounded-md transition-colors text-slate-300 enabled:hover:bg-slate-700 disabled:opacity-50" 
-            aria-label="Redo"
-          >
-              <RedoIcon />
-          </button>
-        </div>
-
-        {settings.tool === ToolType.Text && (
-          <FontMenu
-            selectedFont={settings.fontFamily}
-            onSelectFont={handleFontChange}
-            customFonts={customFonts}
-            onCreateNew={onOpenCreateFont}
-          />
-        )}
-
-        {showColorPalette && (
-          <div className="flex items-center gap-2 px-2">
-            {presetColors.map(color => (
-              <button
-                key={color}
-                onClick={() => handleColorChange(color)}
-                className={`w-7 h-7 rounded-full transition-transform transform hover:scale-110 ${settings.color === color ? 'ring-2 ring-offset-2 ring-offset-slate-800 ring-white' : 'border border-slate-600'}`}
-                style={{ backgroundColor: color }}
-                aria-label={`Select color ${color}`}
-              />
-            ))}
-             <div className="relative w-7 h-7">
-                <button
-                    onClick={() => customColorInputRef.current?.click()}
-                    className={`w-full h-full rounded-full transition-transform transform hover:scale-110 border border-slate-600 flex items-center justify-center
-                      ${isCustomColor ? 'ring-2 ring-offset-2 ring-offset-slate-800 ring-white' : ''}
-                    `}
-                    style={{ backgroundColor: isCustomColor ? settings.color : undefined }}
-                    aria-label="Select custom color"
-                >
-                    {!isCustomColor && 
-                      <div className="w-full h-full rounded-full bg-gradient-to-r from-red-500 via-yellow-500 to-blue-500 flex items-center justify-center">
-                        <PlusIcon className="w-4 h-4 text-white mix-blend-difference" />
-                      </div>
-                    }
-                </button>
-                <input
-                    ref={customColorInputRef}
-                    type="color"
-                    value={settings.color}
-                    onChange={(e) => handleColorChange(e.target.value)}
-                    className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer"
-                />
-            </div>
-          </div>
-        )}
-
-        <div className="flex items-center border-l border-slate-700 pl-2 gap-1">
-            <button
-              onClick={onAddPage}
-              className="p-3 rounded-md transition-colors text-slate-300 hover:bg-slate-700 flex items-center gap-2"
-              aria-label="Add new page"
-            >
-              <AddPageIcon />
-              <span className="text-sm pr-2 hidden sm:inline">Add Page</span>
-            </button>
-            <div className="relative" ref={fileMenuRef}>
-              <button
-                onClick={() => setIsFileMenuOpen(prev => !prev)}
-                className="p-3 rounded-md transition-colors text-slate-300 hover:bg-slate-700 flex items-center gap-2"
-                aria-haspopup="true"
-                aria-expanded={isFileMenuOpen}
-                aria-label="Add file"
-              >
-                <DocumentArrowUpIcon />
-                <span className="text-sm pr-2 hidden sm:inline">Add File</span>
-              </button>
-              {isFileMenuOpen && (
-                <div className="absolute top-full mt-2 w-56 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl z-40 animate-fade-in text-slate-200" role="menu">
-                  <ul className="p-1">
-                    <li role="presentation">
-                      <button role="menuitem" onClick={() => { onAddFile('gallery'); setIsFileMenuOpen(false); }} className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md transition-colors duration-150 hover:bg-slate-700">
-                        <PhotoIcon className="w-5 h-5" />
-                        <span>From Gallery</span>
-                      </button>
-                    </li>
-                    <li role="presentation">
-                      <button role="menuitem" onClick={() => { onAddFile('camera'); setIsFileMenuOpen(false); }} className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md transition-colors duration-150 hover:bg-slate-700">
-                        <CameraIcon className="w-5 h-5" />
-                        <span>Take Photo</span>
-                      </button>
-                    </li>
-                     <li role="presentation">
-                      <button role="menuitem" onClick={() => { onAddFile('files'); setIsFileMenuOpen(false); }} className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md transition-colors duration-150 hover:bg-slate-700">
-                        <DocumentArrowUpIcon className="w-5 h-5" />
-                        <span>From Files</span>
-                      </button>
-                    </li>
-                  </ul>
-                </div>
-              )}
-            </div>
-             <button
-              onClick={onToggleRuler}
-              className={`p-3 rounded-md transition-colors ${
-                isRulerVisible ? 'bg-slate-600 text-white' : 'text-slate-300 hover:bg-slate-700'
-              }`}
-              aria-label="Toggle ruler"
-            >
-              <RulerIcon />
-            </button>
-             <button
-              onClick={onOpenPageStyleSettings}
-              className="p-3 rounded-md transition-colors text-slate-300 hover:bg-slate-700"
-              aria-label="Change page style"
-            >
-              <Bars3Icon />
-            </button>
-            <button
-              onClick={onPrint}
-              className="p-3 rounded-md transition-colors text-slate-300 hover:bg-slate-700"
-              aria-label="Print pages"
-            >
-              <PrintIcon />
-            </button>
-            <button
-              onClick={onThemeChange}
-              className="p-3 rounded-md transition-colors text-slate-300 hover:bg-slate-700"
-              aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-            >
-              {theme === 'light' ? <MoonIcon /> : <SunIcon />}
-            </button>
-        </div>
+            <Icon className="h-5 w-5" />
+          </ToolButton>
+        ))}
       </div>
+
+      <div className="mx-1 h-7 w-px bg-slate-800" />
+
+      <ActionButton label="Undo" onClick={onUndo} disabled={!canUndo}>
+        <UndoIcon className="h-5 w-5" />
+      </ActionButton>
+      <ActionButton label="Redo" onClick={onRedo} disabled={!canRedo}>
+        <RedoIcon className="h-5 w-5" />
+      </ActionButton>
+
+      <div className="mx-1 h-7 w-px bg-slate-800" />
+
+      <div className="relative">
+        <ActionButton
+          label="Insert image"
+          active={openPopover === 'insert'}
+          onClick={() => setOpenPopover((p) => (p === 'insert' ? null : 'insert'))}
+        >
+          <PhotoIcon className="h-5 w-5" />
+        </ActionButton>
+        {openPopover === 'insert' && (
+          <Popover>
+            <PopoverItem
+              icon={<PhotoIcon className="h-4 w-4" />}
+              label="From photo library"
+              onClick={() => {
+                setOpenPopover(null);
+                onAddImage('library');
+              }}
+            />
+            <PopoverItem
+              icon={<CameraIcon className="h-4 w-4" />}
+              label="Take a photo"
+              onClick={() => {
+                setOpenPopover(null);
+                onAddImage('camera');
+              }}
+            />
+          </Popover>
+        )}
+      </div>
+
+      <div className="flex-1" />
+
+      {/* Touch input mode matters enough on iPad to stay visible. */}
+      <button
+        onClick={() => onSettingsChange((prev) => ({ ...prev, fingerDraws: !prev.fingerDraws }))}
+        title={
+          settings.fingerDraws
+            ? 'Finger draws. Tap to make finger scroll instead.'
+            : 'Finger scrolls. Tap to draw with your finger.'
+        }
+        className={`hidden h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors sm:flex ${
+          settings.fingerDraws
+            ? 'bg-sky-500/15 text-sky-300'
+            : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+        }`}
+      >
+        <span className="text-base leading-none">✍</span>
+        {settings.fingerDraws ? 'Finger draws' : 'Finger scrolls'}
+      </button>
+
+      {compact ? (
+        <div className="relative">
+          <ActionButton
+            label="More"
+            active={openPopover === 'more'}
+            onClick={() => setOpenPopover((p) => (p === 'more' ? null : 'more'))}
+          >
+            <EllipsisVerticalIcon className="h-5 w-5" />
+          </ActionButton>
+          {openPopover === 'more' && (
+            <Popover align="right">
+              <PopoverItem
+                icon={<RulerIcon className="h-4 w-4" />}
+                label={rulerVisible ? 'Hide ruler' : 'Show ruler'}
+                onClick={() => {
+                  setOpenPopover(null);
+                  onToggleRuler();
+                }}
+              />
+              <PopoverItem
+                icon={<Bars3Icon className="h-4 w-4" />}
+                label="Page style"
+                onClick={() => {
+                  setOpenPopover(null);
+                  onOpenPageStyle();
+                }}
+              />
+              <PopoverItem
+                icon={<ShareIcon className="h-4 w-4" />}
+                label="Share and export"
+                onClick={() => {
+                  setOpenPopover(null);
+                  onOpenShare();
+                }}
+              />
+              <PopoverItem
+                icon={<PrintIcon className="h-4 w-4" />}
+                label="Print"
+                onClick={() => {
+                  setOpenPopover(null);
+                  onPrint();
+                }}
+              />
+              <PopoverItem
+                icon={
+                  theme === 'light' ? <MoonIcon className="h-4 w-4" /> : <SunIcon className="h-4 w-4" />
+                }
+                label={theme === 'light' ? 'Dark paper' : 'Light paper'}
+                onClick={() => {
+                  setOpenPopover(null);
+                  onToggleTheme();
+                }}
+              />
+              <PopoverItem
+                icon={<DocumentArrowUpIcon className="h-4 w-4" />}
+                label={settings.fingerDraws ? 'Finger scrolls' : 'Finger draws'}
+                onClick={() => {
+                  setOpenPopover(null);
+                  onSettingsChange((prev) => ({ ...prev, fingerDraws: !prev.fingerDraws }));
+                }}
+              />
+            </Popover>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center gap-0.5">{extras}</div>
+      )}
+
+      {openPopover === 'tool' && (
+        <div className="absolute left-2 top-full z-50 mt-1.5 animate-fade-in">
+          <ToolOptions
+            tool={settings.tool}
+            settings={settings}
+            onChange={onSettingsChange}
+            customFonts={customFonts}
+            onCreateFont={onCreateFont}
+            onClose={() => setOpenPopover(null)}
+          />
+        </div>
+      )}
     </div>
   );
 };
+
+const Popover: React.FC<{ children: React.ReactNode; align?: 'left' | 'right' }> = ({
+  children,
+  align = 'left',
+}) => (
+  <div
+    className={`absolute top-full z-50 mt-1.5 w-56 rounded-xl border border-slate-700 bg-slate-900 p-1 shadow-2xl animate-fade-in ${
+      align === 'right' ? 'right-0' : 'left-0'
+    }`}
+    role="menu"
+  >
+    {children}
+  </div>
+);
+
+const PopoverItem: React.FC<{
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}> = ({ icon, label, onClick }) => (
+  <button
+    role="menuitem"
+    onClick={onClick}
+    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-slate-800"
+  >
+    <span className="text-slate-400">{icon}</span>
+    {label}
+  </button>
+);

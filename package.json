@@ -6,12 +6,14 @@
   "homepage": ".",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
     "deploy": "npm run build && gh-pages -d dist"
   },
   "dependencies": {
     "jspdf": "^2.5.1",
+    "perfect-freehand": "^1.2.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
@@ -25,5 +27,6 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5.2.2",
     "vite": "^5.0.8"
-  }
+  },
+  "description": "A fast, offline, canvas-based notebook for stylus and touch, built for the iPad browser."
 }
