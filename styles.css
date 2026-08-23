@@ -2,67 +2,209 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  font-family: 'Lora', serif;
-  -webkit-tap-highlight-color: transparent;
+/* ------------------------------------------------------------------ */
+/* Base                                                                */
+/* ------------------------------------------------------------------ */
+
+:root {
+  color-scheme: dark;
 }
 
-.custom-slider::-webkit-slider-thumb {
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: #020617;
+}
+
+body {
+  font-family: 'Lora', Georgia, serif;
+  /*
+    On iPadOS these three are the difference between a notebook and a
+    fighting match: the tap flash, the rubber-band overscroll that fires
+    mid-stroke, and the text-selection loupe that appears when a palm
+    rests on the screen.
+  */
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Inputs must stay selectable and must not trigger iOS zoom-on-focus,
+   which happens for any font-size below 16px. */
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  font-size: max(16px, inherit);
+}
+
+/* ------------------------------------------------------------------ */
+/* Sliders                                                             */
+/* ------------------------------------------------------------------ */
+
+.zn-slider {
   -webkit-appearance: none;
   appearance: none;
-  width: 20px;
-  height: 20px;
-  background: #f1f5f9;
-  cursor: pointer;
-  border-radius: 50%;
-  margin-top: -6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #1e293b;
+  outline: none;
+  /* A comfortable touch target without making the track look chunky. */
+  padding: 12px 0;
+  background-clip: content-box;
 }
 
-.custom-slider::-moz-range-thumb {
-  width: 20px;
-  height: 20px;
-  background: #f1f5f9;
-  cursor: pointer;
+.zn-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
+  background: #f8fafc;
+  border: 2px solid #0ea5e9;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.45);
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
+.zn-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #f8fafc;
+  border: 2px solid #0ea5e9;
+  cursor: pointer;
+}
+
+.zn-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: #1e293b;
+}
+
+/* ------------------------------------------------------------------ */
+/* Scrollbars                                                          */
+/* ------------------------------------------------------------------ */
+
+.zn-scroll-x,
+.zn-scroll-y {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+
+.zn-scroll-x::-webkit-scrollbar {
+  height: 6px;
+}
+
+.zn-scroll-y::-webkit-scrollbar {
+  width: 8px;
+}
+
+.zn-scroll-x::-webkit-scrollbar-thumb,
+.zn-scroll-y::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 999px;
+}
+
+.zn-scroll-x::-webkit-scrollbar-track,
+.zn-scroll-y::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ------------------------------------------------------------------ */
+/* Animations                                                          */
+/* ------------------------------------------------------------------ */
+
+@keyframes zn-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes zn-fade-in-backdrop {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes zn-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.1s ease-out forwards;
-}
-
-@keyframes fadeInBackdrop {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  animation: zn-fade-in 0.12s ease-out both;
 }
 
 .animate-fade-in-backdrop {
-  animation: fadeInBackdrop 0.2s ease-out forwards;
+  animation: zn-fade-in-backdrop 0.15s ease-out both;
 }
+
+.animate-toast-in {
+  animation: zn-toast-in 0.18s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-fade-in-backdrop,
+  .animate-toast-in {
+    animation: none;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Printing                                                            */
+/* ------------------------------------------------------------------ */
 
 #print-container {
   display: none;
 }
 
 @media print {
+  html,
+  body {
+    background: #ffffff;
+  }
+
   body > #root {
     display: none !important;
   }
+
   #print-container {
     display: block !important;
   }
-  @page {
-    size: auto;
-    margin: 0;
-  }
+
   .print-page {
+    display: block;
     width: 100%;
     height: auto;
-    display: block;
     page-break-after: always;
+    break-after: page;
+  }
+
+  .print-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
   }
 }

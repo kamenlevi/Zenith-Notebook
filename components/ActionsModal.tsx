@@ -1,55 +1,86 @@
 import React from 'react';
-import type { Subject } from '../types';
+import type { Notebook } from '../types';
 import { Modal } from './Modal';
-import { PencilSquareIcon, DocumentDuplicateIcon, ShareIcon, TrashIcon } from './Icons';
+import {
+  Bars3Icon,
+  DocumentDuplicateIcon,
+  PencilSquareIcon,
+  ShareIcon,
+  TrashIcon,
+} from './Icons';
 
-interface ActionsModalProps {
-  subject: Subject;
+interface Props {
+  notebook: Notebook;
   onClose: () => void;
   onRename: (id: string) => void;
   onEditPages: (id: string) => void;
-  onShareExport: (subject: Subject) => void;
+  onPageStyle: (id: string) => void;
+  onShareExport: (id: string) => void;
+  onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
 }
 
-export const ActionsModal: React.FC<ActionsModalProps> = ({
-  subject,
+export const ActionsModal: React.FC<Props> = ({
+  notebook,
   onClose,
   onRename,
   onEditPages,
+  onPageStyle,
   onShareExport,
+  onDuplicate,
   onDelete,
 }) => {
+  const strokes = notebook.objects.filter((o) => o.kind === 'stroke').length;
+  const texts = notebook.objects.filter((o) => o.kind === 'text').length;
+  const images = notebook.objects.filter((o) => o.kind === 'image').length;
+
   return (
-    <Modal title={`Actions for "${subject.name}"`} onClose={onClose}>
-        <div className="flex flex-col gap-2">
-            <ActionButton Icon={PencilSquareIcon} onClick={() => onRename(subject.id)}>Rename</ActionButton>
-            <ActionButton Icon={DocumentDuplicateIcon} onClick={() => onEditPages(subject.id)}>Edit Pages</ActionButton>
-            <ActionButton Icon={ShareIcon} onClick={() => onShareExport(subject)}>Share & Export</ActionButton>
-            <div className="h-px bg-slate-700 my-1" />
-            <ActionButton Icon={TrashIcon} onClick={() => onDelete(subject.id)} isDestructive>Delete Subject</ActionButton>
-        </div>
+    <Modal title={notebook.name} onClose={onClose}>
+      <p className="mb-4 text-sm text-slate-400">
+        {notebook.pageCount} {notebook.pageCount === 1 ? 'page' : 'pages'} · {strokes} strokes ·{' '}
+        {texts} text {texts === 1 ? 'box' : 'boxes'} · {images}{' '}
+        {images === 1 ? 'image' : 'images'}
+      </p>
+      <div className="flex flex-col gap-1">
+        <Row Icon={PencilSquareIcon} onClick={() => onRename(notebook.id)}>
+          Rename
+        </Row>
+        <Row Icon={DocumentDuplicateIcon} onClick={() => onEditPages(notebook.id)}>
+          Page count
+        </Row>
+        <Row Icon={Bars3Icon} onClick={() => onPageStyle(notebook.id)}>
+          Page style
+        </Row>
+        <Row Icon={ShareIcon} onClick={() => onShareExport(notebook.id)}>
+          Share and export
+        </Row>
+        <Row Icon={DocumentDuplicateIcon} onClick={() => onDuplicate(notebook.id)}>
+          Duplicate notebook
+        </Row>
+        <div className="my-1 h-px bg-slate-800" />
+        <Row Icon={TrashIcon} destructive onClick={() => onDelete(notebook.id)}>
+          Delete notebook
+        </Row>
+      </div>
     </Modal>
   );
 };
 
-interface ActionButtonProps {
+const Row: React.FC<{
   children: React.ReactNode;
   onClick: () => void;
   Icon: React.FC<{ className?: string }>;
-  isDestructive?: boolean;
-}
-
-const ActionButton: React.FC<ActionButtonProps> = ({ children, onClick, Icon, isDestructive = false }) => (
-    <button
-      onClick={onClick}
-      className={`w-full text-left flex items-center gap-4 px-4 py-3 rounded-lg transition-colors duration-150 ${
-        isDestructive
-          ? 'text-red-400 hover:bg-red-500/20'
-          : 'text-slate-300 hover:bg-slate-700'
-      }`}
-    >
-      <Icon className="w-5 h-5" />
-      <span className="text-base">{children}</span>
-    </button>
+  destructive?: boolean;
+}> = ({ children, onClick, Icon, destructive }) => (
+  <button
+    onClick={onClick}
+    className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm transition-colors ${
+      destructive
+        ? 'text-red-400 hover:bg-red-500/15'
+        : 'text-slate-200 hover:bg-slate-800'
+    }`}
+  >
+    <Icon className="h-5 w-5 shrink-0" />
+    {children}
+  </button>
 );

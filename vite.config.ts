@@ -1,20 +1,21 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// https://vitejs.dev/config/
-export default defineConfig(({ command }) => {
-  const config = {
-    plugins: [react()],
-    base: '/',
-  };
-
-  if (command !== 'serve') {
-    // In a real-world scenario, you might pull this from an environment variable
-    // For this project, we can hardcode it based on a typical GitHub Pages URL structure
-    // assuming the repo name is 'zenith-notebook'.
-    // You would change 'zenith-notebook' to your actual repository name.
-    config.base = '/Zenith-Notebook/';
-  }
-
-  return config;
-});
+// The GitHub Pages deployment lives at /Zenith-Notebook/, but every asset
+// reference in index.html and the manifest is relative, so a relative base
+// also works if the app is served from a different path.
+export default defineConfig(({ command }) => ({
+  plugins: [react()],
+  base: command === 'serve' ? '/' : '/Zenith-Notebook/',
+  build: {
+    target: 'es2020',
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom'],
+        },
+      },
+    },
+  },
+}));

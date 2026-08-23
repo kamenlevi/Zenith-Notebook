@@ -1,165 +1,146 @@
 # Zenith Notebook
--Unfinished and currently unsupported
 
-A fast, canvas-based digital notebook that runs entirely in the browser — no account, no server, no install. Works on desktop, iPad, and mobile.
+A canvas notebook that runs entirely in the browser. No account, no server, no install. Built for writing with a stylus on an iPad, and equally usable with a mouse and keyboard.
+
+Open it, write, close the tab. Everything stays on your device.
 
 ---
 
 ## Features
 
-- **Five drawing tools** — Pen, Pencil, Highlighter, Eraser, and Text
-- **Custom fonts** — Draw your own handwriting and use it as a font
-- **Multiple subjects** — Each subject is an independent notebook with its own pages, theme, and page style
-- **Page styles** — Ruled, Grid, Custom-ruled (configurable line spacing), and Blank; custom line colours
-- **Page formats** — US Letter, A4, Tablet (4:3), Widescreen (16:9)
-- **Light / Dark theme** per subject
-- **Images** — Insert photos from your gallery, camera, or file system; drag to reposition
-- **Undo / Redo** — Full history with hold-to-repeat
-- **Print** — Select any page range and print via your device's print dialog
-- **Share** — Generates a URL that encodes the notebook as a hash; anyone with the link can import a snapshot
-- **Export PDF** — Renders all pages to a high-quality PDF via jsPDF
-- **Auto-save** — All data is persisted in browser localStorage; no account needed
-- **Import** — Drop in a folder of images or text files to create a notebook from existing content
+**Writing**
+- Pen, pencil, highlighter and eraser, each with its own size and colour that it remembers
+- Real pressure response from an Apple Pencil or any pressure-capable stylus, with velocity-based thinning for mouse and finger
+- Variable-width strokes with natural entry and exit tapers
+- Two eraser modes: remove a whole stroke on contact, or rub out just the part you touch
+- A straightedge ruler you can drag and rotate; strokes drawn along it snap to its edge
+
+**Text**
+- Tap anywhere to place a text box; it wraps on the page exactly as it does while you type
+- Text boxes can be moved, resized, re-edited and deleted after the fact
+- 60+ fonts, plus fonts you draw yourself character by character
+
+**Pages and notebooks**
+- Multiple independent notebooks, each with its own paper, theme and page count
+- Paper: US Letter, A4, Tablet 4:3, Widescreen 16:9 — real dimensions, not a fixed size with a different label
+- Lines: ruled, grid, dotted, custom-ruled (your own spacing in cm), or blank
+- Light or dark paper per notebook, with a custom line colour if you want one
+
+**Everything else**
+- Lasso selection: move, scale, duplicate, reorder or delete anything on the page
+- Photos from your library or straight from the camera, positioned and resized like any other object
+- Undo/redo across the whole document, including a two-finger tap to undo
+- Export to PDF or PNG, print any page range, save a `.zenith` file, or share a link that carries the notebook in the URL
 
 ---
 
-## Getting Started (Development)
+## Getting started
 
 ```bash
 npm install
-npm run dev       # starts Vite dev server on http://localhost:5173
-npm run build     # type-check + production build → dist/
-npm run preview   # preview the production build locally
-npm run deploy    # build and push to GitHub Pages (requires gh-pages)
+npm run dev        # http://localhost:5173
+npm run build      # type-check + production build into dist/
+npm run preview    # serve the production build
+npm run deploy     # build and publish to GitHub Pages
 ```
 
-**Requirements:** Node 18+, npm 9+
+Requires Node 18+.
 
 ---
 
-## Using on Desktop / Laptop
+## Using it on an iPad
 
-### Drawing
-- Select a tool from the toolbar: **Pen**, **Pencil** (semi-transparent), **Highlighter**, **Eraser**, or **Text**
-- Draw on the page with your mouse or stylus
-- Use the **vertical size slider** on the left to change stroke / font size
+Add it to your home screen (Share → Add to Home Screen) and it runs full-screen with no browser chrome.
 
-### Colour
-- Pick from the five preset colours in the toolbar
-- Click the rainbow circle to open the system colour picker for any custom colour
-
-### Text
-1. Select the **Text** tool
-2. Click anywhere on the page — the cursor snaps to the nearest ruled line automatically
-3. Type; press **Enter** to confirm, **Escape** to cancel
-4. Choose a font from the font dropdown (80+ Google Fonts included)
-
-### Keyboard shortcuts (text editing)
-| Key | Action |
-|-----|--------|
-| `Enter` | Submit text |
-| `Shift+Enter` | New line |
-| `Escape` | Cancel without saving |
-
-### Undo / Redo
-- **Click** the undo / redo buttons to step one action
-- **Hold** the button to fast-repeat through history; hold longer to speed up further
-
-### Pages & Subjects
-- Click **Add Page** in the toolbar to append a page to the current subject
-- Click the **⋮** (ellipsis) on any subject tab to rename, change page count, change page style, share/export, or delete it
-- Click **+** in the subject bar to create a new subject
-- Click the **☰** (bars) button in the toolbar to open Page Style settings
-
-### Images
-1. Click **Add File** in the toolbar
-2. Choose **From Gallery** (file picker), **Take Photo** (camera), or **From Files**
-3. On touch devices, drag the image with one finger to reposition it
-
-### Print & Export
-- **Print icon** → enter a page range (e.g. `1-3, 5`) → opens the browser print dialog
-- **⋮ → Share & Export** → copy the share URL or click **Export as PDF**
-
-### Settings
-- Click the **gear icon** (bottom-right of the subject bar) to open Settings
-- Toggle **Auto-save** (enabled by default — saves to localStorage)
-- **Import Notebook** — select a folder of images or text files to create a subject from existing content
-- **Clear All Saved Data** — permanently removes all subjects and settings
-
----
-
-## Using on iPad
-
-### Drawing & Writing
-- Use an Apple Pencil (or any stylus) directly on the canvas — produces smooth, pressure-agnostic strokes
-- Finger touch is reserved for **navigation** (pan, zoom) so you can rest your palm without drawing
-
-### Navigation
 | Gesture | Action |
-|---------|--------|
-| 1-finger drag | Pan the canvas |
-| 2-finger pinch | Zoom in / out |
-| 2-finger tap | **Undo** last stroke |
-| 3-finger tap | **Redo** |
-| Release zoom below 60% | Auto-snaps back to 100% |
+|---|---|
+| Apple Pencil | Draws, always — regardless of the finger setting |
+| One finger | Scrolls and pans by default. Toggle **Finger draws** in the toolbar to write with a finger instead |
+| Two fingers | Pan and pinch-zoom together |
+| Two-finger tap | Undo |
+| Three-finger tap | Redo |
+| Tap the active tool | Opens that tool's size and colour |
 
-### Adding Photos
-- Tap **Add File → From Gallery** to pick from Photos
-- Tap **Add File → Take Photo** to use the camera inline
-- After inserting, drag the image with **one finger** to reposition it
+Your palm is ignored while the Pencil is touching the screen, so you can rest your hand on the page.
 
-### Tips for iPad
-- Rotate to landscape for Widescreen-format subjects; portrait for Letter/A4
-- Use **Custom Ruled** page style and set line spacing to match your natural handwriting size
-- The size slider on the left is touch-friendly — drag it vertically
+The text and selection tools always respond to a single finger, since tapping is the whole point of them — two fingers still pan and zoom.
 
----
+## Using it on a desktop
 
-## Using on Mobile (iPhone / Android)
-
-The interface is the same as iPad. Practical notes for smaller screens:
-
-- The toolbar wraps on narrow screens — scroll horizontally if controls are hidden
-- Tap the subject tab bar to switch subjects; **+** is at the right end
-- **2-finger tap = Undo**, **3-finger tap = Redo**
-- For photos: **Add File → Take Photo** opens the camera; **From Gallery** opens the media picker
-- Share links can be long (the full notebook is encoded in the URL hash) — use the **Copy** button and send via messaging or email
+| Input | Action |
+|---|---|
+| Scroll wheel / trackpad | Scroll the page; Shift to scroll sideways |
+| Pinch on trackpad, or Ctrl/⌘ + scroll | Zoom at the cursor |
+| Middle-drag | Pan |
+| ⌘Z / ⌘⇧Z | Undo / redo |
+| ⌘A | Select all (with the select tool) |
+| ⌘D | Duplicate the selection |
+| Delete | Delete the selection |
+| ⌘+ / ⌘− / ⌘0 | Zoom in, out, reset |
+| ⌘↵ | Commit the text box you're editing |
+| Esc | Cancel text editing, or clear the selection |
 
 ---
 
-## Data & Privacy
+## Where your data lives
 
-- All notebook data is stored exclusively in your browser's **localStorage**
-- Nothing is sent to any server
-- To back up or move notebooks between devices, use **Share & Export → copy link** (or export PDF)
-- To clear everything: **Settings → Clear All Saved Data**
+Notebooks and images are stored in this browser's **IndexedDB** on this device. Preferences live in localStorage. Nothing is uploaded anywhere — there is no server.
+
+That also means data is per-browser and per-device. To move a notebook somewhere else:
+
+- **Share and export → Save .zenith file** — the whole notebook including images. Open it elsewhere with **Settings → Import**.
+- **Share and export → Share a link** — the notebook is encoded into the URL itself. Small notebooks only, and images are not included.
+
+Deleting a notebook leaves its images behind until you run **Settings → Remove unused images**. Settings also shows how much space you're using.
 
 ---
 
 ## Architecture
 
-| File | Role |
-|------|------|
-| `App.tsx` | Root state (subjects, settings, fonts), modal routing |
-| `components/Notebook.tsx` | Canvas rendering pipeline, pointer handling, undo/redo, text editing |
-| `components/canvasUtils.ts` | Pure canvas drawing — backgrounds, smooth paths, custom-font text |
-| `components/Toolbar.tsx` | Tool / colour / action bar |
-| `components/Sidebar.tsx` | Subject tabs |
-| `types.ts` | Shared TypeScript types |
-| `index.html` | Loads Tailwind (CDN), Google Fonts, jsPDF (CDN UMD), importmap |
-
-### Rendering pipeline
-
 ```
-drawingObjects + images
-        │
-        ▼
-  offscreenCanvas  ← full scene at document resolution (816 × totalHeight px)
-        │  drawImage with transform
-        ▼
-  contentCanvas   ← viewport-sized, applies pan/zoom transform
-        │
-  uiCanvas        ← overlaid; draws current stroke preview + image selection boxes
+index.tsx            mount, error boundary, iPadOS gesture suppression
+App.tsx              notebook list, persistence, modal routing
+engine/
+  NotebookEngine.ts  canvas ownership, input, gestures, tools, undo, render loop
+lib/
+  geometry.ts        page formats, world coordinates, bounds, hit-test maths
+  render.ts          paper, strokes, text and images -> canvas
+  stroke.ts          input points -> variable-width outline (perfect-freehand)
+  text.ts            measurement and wrapping, shared by canvas and editor
+  customFont.ts      hand-drawn glyph rasterisation and tinting
+  storage.ts         IndexedDB notebooks and image assets
+  notebook.ts        document construction, hydration, v1 migration
+  exporting.ts       PDF, PNG, print, .zenith files, share links
+  imageCache.ts      decoded-image cache
+components/          React chrome (toolbar, tabs, modals, canvas host)
 ```
 
-The offscreen canvas is only redrawn when committed objects change (stroke complete, image drag settled). During active drawing, only the UI canvas updates, keeping the main canvas untouched until the stroke is finalised.
+### Why the engine is not a React component
+
+Pan, zoom and every pointer sample are held in the engine, not in React state, and the engine drives its own `requestAnimationFrame` loop with dirty flags. Routing input through `useState` means a React render sits between the finger moving and anything being drawn, which is what made the earlier version feel sluggish. React re-renders only when the *chrome* needs to change — undo availability, the zoom readout, the page number.
+
+### Rendering
+
+```
+base canvas      paper, ruled lines, page shadows        (world transform applied)
+  └ content layer  strokes, text, images                 (composited on top)
+overlay canvas   live stroke, selection, lasso, ruler
+```
+
+Two things matter here.
+
+**The transform is applied to the context, not to a bitmap.** Zooming re-draws the vectors at the new scale, so handwriting stays crisp at 800%. Objects outside the viewport are culled by their cached bounds.
+
+**Content renders to its own layer before being composited onto the paper.** The eraser uses `destination-out`, which removes whatever is beneath it — so it has to run somewhere the paper isn't, or it cuts holes straight through the page.
+
+---
+
+## Upgrading from the older version
+
+Notebooks saved by the previous version are migrated automatically on first launch: subjects become notebooks, paths become pressure-aware strokes, text is re-anchored from its baseline to its top-left corner, and inline base64 images are moved out of the document into the asset store. The old localStorage keys are left untouched, so nothing is lost if you need to go back.
+
+---
+
+## Licence
+
+No licence specified — all rights reserved by the author.

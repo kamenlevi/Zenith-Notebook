@@ -1,53 +1,78 @@
-import React, { useState } from 'react';
-import type { Subject } from '../types';
-import { Modal } from './Modal';
+import React, { useMemo, useState } from 'react';
+import type { Notebook } from '../types';
+import { Modal, PrimaryButton, SecondaryButton } from './Modal';
+import { getPageSize } from '../lib/geometry';
 
-interface EditPagesModalProps {
-  subject: Subject;
+interface Props {
+  notebook: Notebook;
   onClose: () => void;
-  onSave: (id: string, newPageCount: number) => void;
+  onSave: (id: string, pageCount: number) => void;
 }
 
-export const EditPagesModal: React.FC<EditPagesModalProps> = ({ subject, onClose, onSave }) => {
-  const [pageCount, setPageCount] = useState(subject.pageCount);
+const MIN_PAGES = 1;
+const MAX_PAGES = 500;
 
-  const handleSave = () => {
-    const newPageCount = Math.max(1, Math.min(100, pageCount)); // Clamp between 1 and 100
-    onSave(subject.id, newPageCount);
-  };
+export const EditPagesModal: React.FC<Props> = ({ notebook, onClose, onSave }) => {
+  const [value, setValue] = useState(String(notebook.pageCount));
+
+  const parsed = Number(value);
+  const valid = Number.isInteger(parsed) && parsed >= MIN_PAGES && parsed <= MAX_PAGES;
+
+  /**
+   * Warn before a reduction throws away work. The old build let you drop from
+   * 20 pages to 1 with no indication that anything was about to disappear from
+   * view — and it did not even apply the change, because the canvas never
+   * re-read the prop.
+   */
+  const orphaned = useMemo(() => {
+    if (!valid || parsed >= notebook.pageCount) return 0;
+    const { height } = getPageSize(notebook.pageFormat);
+    const cutoff = parsed * (height + 28);
+    return notebook.objects.filter((o) => o.bounds.minY >= cutoff).length;
+  }, [valid, parsed, notebook]);
 
   return (
-    <Modal title={`Edit Pages for "${subject.name}"`} onClose={onClose}>
-      <div className="space-y-4">
-        <div>
-          <label htmlFor="page-count" className="block text-sm font-medium text-slate-400 mb-2">
-            Number of pages
-          </label>
-          <input
-            id="page-count"
-            type="number"
-            min="1"
-            max="100"
-            value={pageCount}
-            onChange={(e) => setPageCount(Number(e.target.value))}
-            className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-slate-300"
-          />
+    <Modal
+      title="Page count"
+      onClose={onClose}
+      footer={
+        <div className="flex justify-end gap-3">
+          <SecondaryButton onClick={onClose}>Cancel</SecondaryButton>
+          <PrimaryButton disabled={!valid} onClick={() => onSave(notebook.id, parsed)}>
+            Save
+          </PrimaryButton>
         </div>
-        <div className="flex justify-end gap-3 pt-2">
-          <button 
-            onClick={onClose}
-            className="bg-slate-700 hover:bg-slate-600 text-white font-semibold px-4 py-2 rounded-md transition-colors"
-          >
-            Cancel
-          </button>
-          <button 
-            onClick={handleSave}
-            className="bg-slate-300 hover:bg-slate-200 text-slate-900 font-bold px-4 py-2 rounded-md transition-colors"
-          >
-            Save Changes
-          </button>
-        </div>
-      </div>
+      }
+    >
+      <label className="block">
+        <span className="mb-2 block text-sm text-slate-400">
+          Number of pages ({MIN_PAGES}–{MAX_PAGES})
+        </span>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={MIN_PAGES}
+          max={MAX_PAGES}
+          value={value}
+          autoFocus
+          onChange={(e) => setValue(e.target.value)}
+          className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-200 outline-none focus:border-sky-500"
+        />
+      </label>
+
+      {!valid && value.trim() !== '' && (
+        <p className="mt-2 text-sm text-red-400">
+          Enter a whole number between {MIN_PAGES} and {MAX_PAGES}.
+        </p>
+      )}
+
+      {orphaned > 0 && (
+        <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+          {orphaned} {orphaned === 1 ? 'item is' : 'items are'} on the pages you are removing. They
+          stay in the file and reappear if you add the pages back, but you will not be able to see
+          or reach them.
+        </p>
+      )}
     </Modal>
   );
 };

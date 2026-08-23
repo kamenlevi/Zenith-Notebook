@@ -1,67 +1,66 @@
-import React, { useState } from 'react';
-import { Modal } from './Modal';
+import React, { useMemo, useState } from 'react';
+import { Modal, PrimaryButton, SecondaryButton } from './Modal';
 import { SpinnerIcon } from './Icons';
+import { parsePageRange } from '../lib/exporting';
 
-interface PrintModalProps {
+interface Props {
   totalPages: number;
   onClose: () => void;
-  onPrint: (pageSelection: string) => void;
+  onPrint: (pages: number[]) => void;
   isPreparing: boolean;
 }
 
-export const PrintModal: React.FC<PrintModalProps> = ({ totalPages, onClose, onPrint, isPreparing }) => {
-  const [pageSelection, setPageSelection] = useState(`1-${totalPages}`);
+export const PrintModal: React.FC<Props> = ({ totalPages, onClose, onPrint, isPreparing }) => {
+  const [value, setValue] = useState(`1-${totalPages}`);
 
-  const handlePrint = () => {
-    if (!pageSelection.trim()) {
-      alert("Please enter which pages you'd like to print.");
-      return;
-    }
-    onPrint(pageSelection);
-  };
+  // Validate as the user types instead of alerting after the fact.
+  const result = useMemo(() => parsePageRange(value, totalPages), [value, totalPages]);
 
   return (
-    <Modal title="Print Pages" onClose={onClose}>
+    <Modal
+      title="Print"
+      onClose={onClose}
+      footer={
+        isPreparing ? undefined : (
+          <div className="flex justify-end gap-3">
+            <SecondaryButton onClick={onClose}>Cancel</SecondaryButton>
+            <PrimaryButton disabled={!!result.error} onClick={() => onPrint(result.pages)}>
+              Print {result.pages.length > 0 ? `${result.pages.length} ` : ''}
+              {result.pages.length === 1 ? 'page' : 'pages'}
+            </PrimaryButton>
+          </div>
+        )
+      }
+    >
       {isPreparing ? (
-        <div className="flex flex-col items-center justify-center h-32">
-          <SpinnerIcon />
-          <p className="mt-4 text-slate-400">Preparing your pages...</p>
+        <div className="flex h-32 flex-col items-center justify-center gap-3">
+          <SpinnerIcon className="h-6 w-6" />
+          <p className="text-sm text-slate-400">Rendering pages…</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="page-selection" className="block text-sm font-medium text-slate-400 mb-2">
-              Enter pages or page ranges
-            </label>
+        <div className="space-y-3">
+          <label className="block">
+            <span className="mb-2 block text-sm text-slate-400">Pages</span>
             <input
-              id="page-selection"
               type="text"
-              value={pageSelection}
-              onChange={(e) => setPageSelection(e.target.value)}
-              placeholder="e.g., 1, 3-5, 8"
-              className="w-full bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-slate-300"
+              value={value}
+              autoFocus
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="e.g. 1, 3-5, 8"
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-200 outline-none focus:border-sky-500"
             />
-            <p className="text-xs text-slate-500 mt-2">
-              There are {totalPages} pages in total. Use commas to separate pages and hyphens for ranges.
+          </label>
+          {result.error ? (
+            <p className="text-sm text-red-400">{result.error}</p>
+          ) : (
+            <p className="text-sm text-slate-500">
+              {result.pages.length} of {totalPages} {totalPages === 1 ? 'page' : 'pages'} selected.
             </p>
-          </div>
-           <p className="text-xs text-slate-500 italic pt-2">
-            Note: This will open your device's standard print dialog. Please ensure you have a printer configured.
+          )}
+          <p className="text-xs text-slate-500">
+            Pages are rendered at 2× and sent to your device's print dialog. Choose "Scale to fit"
+            there if your paper size differs from the notebook's.
           </p>
-          <div className="flex justify-end gap-3 pt-2">
-            <button 
-              onClick={onClose}
-              className="bg-slate-700 hover:bg-slate-600 text-white font-semibold px-4 py-2 rounded-md transition-colors"
-            >
-              Cancel
-            </button>
-            <button 
-              onClick={handlePrint}
-              className="bg-slate-300 hover:bg-slate-200 text-slate-900 font-bold px-4 py-2 rounded-md transition-colors"
-            >
-              Print
-            </button>
-          </div>
         </div>
       )}
     </Modal>

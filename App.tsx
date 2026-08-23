@@ -1,443 +1,663 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { Sidebar } from './components/Sidebar';
-import { Notebook } from './components/Notebook';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { NotebookTabs } from './components/NotebookTabs';
+import { Toolbar } from './components/Toolbar';
+import { NotebookCanvas, type NotebookCanvasHandle } from './components/NotebookCanvas';
 import { ActionsModal } from './components/ActionsModal';
-import { ShareExportModal } from './components/ShareExportModal';
 import { EditPagesModal } from './components/EditPagesModal';
+import { PageSettingsModal, type PageStyleUpdate } from './components/PageSettingsModal';
+import { PrintModal } from './components/PrintModal';
 import { SettingsModal } from './components/SettingsModal';
-import { PageSettingsModal } from './components/PageSettingsModal';
+import { ShareExportModal } from './components/ShareExportModal';
 import { CreateFontModal } from './components/CreateFontModal';
-import { ToolType } from './types';
-import type { Subject, PageBackground, CustomFont, PageFormat, AppSettings, ImageObject } from './types';
+import { useToast } from './components/Toast';
+import { SpinnerIcon } from './components/Icons';
+import type { AppSettings, CustomFont, Notebook, NoteObject, ToolSettings } from './types';
+import {
+  DEFAULT_TOOL_SETTINGS,
+  createNotebook,
+  hydrateNotebook,
+  migrateLegacySubject,
+} from './lib/notebook';
+import {
+  clearAllData,
+  collectGarbage,
+  deleteNotebook as deleteNotebookRecord,
+  hasMigrated,
+  loadActiveNotebookId,
+  loadAppSettings,
+  loadCustomFonts,
+  loadNotebooks,
+  loadToolSettings,
+  markMigrated,
+  readLegacyFonts,
+  readLegacySubjects,
+  saveActiveNotebookId,
+  saveAppSettings,
+  saveCustomFonts,
+  saveNotebook,
+  saveToolSettings,
+} from './lib/storage';
+import {
+  clearPrintContainer,
+  importNotebookFile,
+  printPages,
+  readShareLink,
+} from './lib/exporting';
+import { uid } from './lib/id';
 
-const LOCAL_STORAGE_KEY_SUBJECTS = 'zenith_notebook_subjects';
-const LOCAL_STORAGE_KEY_SETTINGS = 'zenith_notebook_settings';
-const LOCAL_STORAGE_KEY_FONTS = 'zenith_notebook_fonts';
+type ModalState =
+  | { kind: 'none' }
+  | { kind: 'actions'; id: string }
+  | { kind: 'pages'; id: string }
+  | { kind: 'pageStyle'; id: string }
+  | { kind: 'share'; id: string }
+  | { kind: 'print' }
+  | { kind: 'settings' }
+  | { kind: 'createFont'; editing: CustomFont | null };
 
-const defaultSubjects: Subject[] = [
-    { id: '1', name: 'Mathematics', canvasState: [], images: [], pageCount: 5, theme: 'light', pageFormat: 'Letter', pageBackground: 'ruled', lineSpacingCm: 0.7, lineColor: null },
-    { id: '2', name: 'Biology Notes', canvasState: [], images: [], pageCount: 5, theme: 'dark', pageFormat: 'A4', pageBackground: 'grid', lineSpacingCm: 1, lineColor: null },
-];
+const SAVE_DEBOUNCE_MS = 700;
+
+/**
+ * A shared notebook arrives in the URL hash. Read it once, at module scope,
+ * before React mounts — reading it inside an effect means a double-invoked
+ * effect (StrictMode, or any remount) can consume it twice or lose it to the
+ * history replace performed by whichever run got there first.
+ */
+const PENDING_SHARE: string | null = (() => {
+  if (typeof window === 'undefined') return null;
+  const hash = window.location.hash;
+  if (!hash.startsWith('#nb=')) return null;
+  window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  return hash;
+})();
 
 const App: React.FC = () => {
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
-  const [isAddingSubject, setIsAddingSubject] = useState(false);
-  const [actionsModalSubjectId, setActionsModalSubjectId] = useState<string | null>(null);
-  const [renamingSubjectId, setRenamingSubjectId] = useState<string | null>(null);
-  const [shareExportSubject, setShareExportSubject] = useState<Subject | null>(null);
-  const [editingPagesSubject, setEditingPagesSubject] = useState<Subject | null>(null);
-  const [editingPageStyleSubject, setEditingPageStyleSubject] = useState<Subject | null>(null);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [settings, setSettings] = useState<AppSettings>({ autoSave: true });
+  const toast = useToast();
+
+  const [ready, setReady] = useState(false);
+  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [toolSettings, setToolSettings] = useState<ToolSettings>(DEFAULT_TOOL_SETTINGS);
+  const [appSettings, setAppSettings] = useState<AppSettings>(() => loadAppSettings());
   const [customFonts, setCustomFonts] = useState<CustomFont[]>([]);
-  const [isCreateFontModalOpen, setIsCreateFontModalOpen] = useState(false);
-  const [isRulerVisible, setIsRulerVisible] = useState(false);
-  const notebookRef = useRef<{ renderFullCanvas: () => Promise<HTMLCanvasElement | null> }>(null);
-  const saveSubjectsTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const [modal, setModal] = useState<ModalState>({ kind: 'none' });
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const [rulerVisible, setRulerVisible] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
 
-  // Load settings, subjects, and fonts on initial render
+  const canvasRef = useRef<NotebookCanvasHandle>(null);
+  const libraryInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const saveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const dirtyNotebooks = useRef(new Map<string, Notebook>());
+
+  const activeNotebook = useMemo(
+    () => notebooks.find((n) => n.id === activeId) ?? null,
+    [notebooks, activeId],
+  );
+
+  /* ---------------------------------------------------------------- */
+  /* Boot                                                              */
+  /* ---------------------------------------------------------------- */
+
   useEffect(() => {
-    // Load settings
-    const savedSettingsRaw = localStorage.getItem(LOCAL_STORAGE_KEY_SETTINGS);
-    const savedSettings = savedSettingsRaw ? JSON.parse(savedSettingsRaw) : { autoSave: true };
-    setSettings(savedSettings);
+    let cancelled = false;
 
-    // Load custom fonts
-    const savedFontsRaw = localStorage.getItem(LOCAL_STORAGE_KEY_FONTS);
-    if (savedFontsRaw) {
+    (async () => {
       try {
-        const savedFonts = JSON.parse(savedFontsRaw);
-        setCustomFonts(savedFonts);
-      } catch (error) {
-        console.error("Failed to parse custom fonts from localStorage", error);
-      }
-    }
+        /*
+         * Every read happens first, then a single cancellation gate, then
+         * every write. Interleaving them meant a remount could run the
+         * "no notebooks yet, create a starter" branch twice concurrently —
+         * both runs saw an empty store and both wrote a starter. The user saw
+         * one tab and found a phantom duplicate after reloading.
+         */
+        const storedFonts = loadCustomFonts();
+        const migrated = hasMigrated();
+        const legacyFonts = migrated ? null : readLegacyFonts();
+        const legacySubjects = migrated ? null : readLegacySubjects();
+        const stored = await loadNotebooks();
+        const savedActive = loadActiveNotebookId();
+        const storedTools = loadToolSettings(DEFAULT_TOOL_SETTINGS);
 
-    // Load subjects if autoSave is on
-    if (savedSettings.autoSave) {
-      const savedSubjectsRaw = localStorage.getItem(LOCAL_STORAGE_KEY_SUBJECTS);
-      if (savedSubjectsRaw) {
-        try {
-          const savedSubjects = JSON.parse(savedSubjectsRaw);
-          // Add fallback for new properties if loading old data
-          const subjectsWithDefaults = savedSubjects.map((s: any) => ({
-            ...s,
-            canvasState: Array.isArray(s.canvasState) ? s.canvasState : [],
-            images: s.images || [],
-            pageFormat: s.pageFormat || 'Letter',
-            pageBackground: s.pageBackground || 'ruled',
-            lineSpacingCm: s.lineSpacingCm || 0.7,
-            lineColor: s.lineColor !== undefined ? s.lineColor : null,
-          }));
-          setSubjects(subjectsWithDefaults);
-          if (subjectsWithDefaults.length > 0) {
-            setActiveSubjectId(subjectsWithDefaults[0].id);
+        if (cancelled) return;
+
+        /* ---- writes from here on ---- */
+
+        let fonts = storedFonts;
+        if (legacyFonts && legacyFonts.length > 0 && storedFonts.length === 0) {
+          fonts = legacyFonts;
+          saveCustomFonts(legacyFonts);
+        }
+
+        const loaded = [...stored];
+
+        if (legacySubjects && legacySubjects.length > 0) {
+          for (const subject of legacySubjects) {
+            const converted = await migrateLegacySubject(subject);
+            await saveNotebook(converted);
+            loaded.push(converted);
           }
-        } catch (error) {
-          console.error("Failed to parse subjects from localStorage", error);
-          setSubjects(defaultSubjects);
-          setActiveSubjectId(defaultSubjects.length > 0 ? defaultSubjects[0].id : null);
+          toast.success(
+            `Brought ${legacySubjects.length} notebook${legacySubjects.length === 1 ? '' : 's'} over from the old version.`,
+          );
         }
-      } else {
-         setSubjects(defaultSubjects);
-         setActiveSubjectId(defaultSubjects.length > 0 ? defaultSubjects[0].id : null);
-      }
-    } else {
-        setSubjects(defaultSubjects);
-        setActiveSubjectId(defaultSubjects.length > 0 ? defaultSubjects[0].id : null);
-    }
-  }, []);
+        if (!migrated) markMigrated();
 
-  // Save subjects to localStorage — debounced so rapid changes (image drag, stroke
-  // updates) don't hammer storage on every pointer event.
-  useEffect(() => {
-    if (!settings.autoSave) return;
-    if (saveSubjectsTimerRef.current !== null) clearTimeout(saveSubjectsTimerRef.current);
-    saveSubjectsTimerRef.current = window.setTimeout(() => {
-      localStorage.setItem(LOCAL_STORAGE_KEY_SUBJECTS, JSON.stringify(subjects));
-    }, 1000);
+        let shared: Notebook | null = null;
+        if (PENDING_SHARE) {
+          shared = readShareLink(PENDING_SHARE);
+          if (shared) {
+            const hydratedShare = hydrateNotebook(shared, fonts);
+            await saveNotebook(hydratedShare);
+            loaded.push(hydratedShare);
+            shared = hydratedShare;
+          } else {
+            toast.error('That share link could not be read. It may have been truncated in transit.');
+          }
+        }
+
+        if (loaded.length === 0) {
+          const starter = createNotebook('My Notebook');
+          await saveNotebook(starter);
+          loaded.push(starter);
+        }
+
+        const hydrated = loaded.map((n) => hydrateNotebook(n, fonts));
+        const initialId =
+          shared?.id ??
+          (savedActive && hydrated.some((n) => n.id === savedActive)
+            ? savedActive
+            : hydrated[0]?.id ?? null);
+
+        setCustomFonts(fonts);
+        setToolSettings(storedTools);
+        setNotebooks(hydrated);
+        setActiveId(initialId);
+        if (shared) toast.success(`Imported "${shared.name}".`);
+      } catch (err) {
+        if (!cancelled) {
+          toast.error(
+            err instanceof Error
+              ? err.message
+              : 'Could not open local storage. Notebooks may not save.',
+          );
+          setNotebooks([createNotebook('My Notebook')]);
+        }
+      } finally {
+        if (!cancelled) setReady(true);
+      }
+    })();
+
     return () => {
-      if (saveSubjectsTimerRef.current !== null) clearTimeout(saveSubjectsTimerRef.current);
+      cancelled = true;
     };
-  }, [subjects, settings.autoSave]);
-  
-  // Save settings to localStorage
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY_SETTINGS, JSON.stringify(settings));
-  }, [settings]);
+    // Boot runs once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Save custom fonts to localStorage
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY_FONTS, JSON.stringify(customFonts));
-  }, [customFonts]);
+  /* ---------------------------------------------------------------- */
+  /* Persistence                                                       */
+  /* ---------------------------------------------------------------- */
 
-  // Handle shared URL import
-  useEffect(() => {
-    const hash = window.location.hash;
-    if (hash.startsWith('#data=')) {
-      try {
-        const base64Data = hash.substring(6);
-        const jsonData = new TextDecoder().decode(Uint8Array.from(atob(base64Data), c => c.charCodeAt(0)));
-        const sharedSubjectData = JSON.parse(jsonData);
+  const flushSaves = useCallback(() => {
+    for (const [id, timer] of saveTimers.current) {
+      clearTimeout(timer);
+      saveTimers.current.delete(id);
+    }
+    const pending = [...dirtyNotebooks.current.values()];
+    dirtyNotebooks.current.clear();
+    for (const notebook of pending) {
+      void saveNotebook(notebook).catch(() => {
+        /* Reported on the next interactive save. */
+      });
+    }
+  }, []);
 
-        if (sharedSubjectData.name && typeof sharedSubjectData.pageCount === 'number') {
-          const newSubject: Subject = {
-            id: new Date().toISOString(),
-            name: `Shared: ${sharedSubjectData.name}`,
-            canvasState: Array.isArray(sharedSubjectData.canvasState) ? sharedSubjectData.canvasState : [],
-            images: sharedSubjectData.images || [],
-            pageCount: sharedSubjectData.pageCount,
-            theme: sharedSubjectData.theme || 'light',
-            pageFormat: sharedSubjectData.pageFormat || 'Letter',
-            pageBackground: sharedSubjectData.pageBackground || 'ruled',
-            lineSpacingCm: sharedSubjectData.lineSpacingCm || 0.7,
-            lineColor: sharedSubjectData.lineColor !== undefined ? sharedSubjectData.lineColor : null,
-          };
-          
-          setSubjects(prev => {
-            const isDuplicate = prev.some(s => 
-                JSON.stringify(s.canvasState) === JSON.stringify(newSubject.canvasState) && s.name === newSubject.name
-            );
-            if (isDuplicate) return prev;
-            return [...prev, newSubject];
+  const scheduleSave = useCallback(
+    (notebook: Notebook) => {
+      if (!appSettings.autoSave) return;
+      dirtyNotebooks.current.set(notebook.id, notebook);
+      const existing = saveTimers.current.get(notebook.id);
+      if (existing) clearTimeout(existing);
+      saveTimers.current.set(
+        notebook.id,
+        setTimeout(() => {
+          saveTimers.current.delete(notebook.id);
+          const latest = dirtyNotebooks.current.get(notebook.id);
+          dirtyNotebooks.current.delete(notebook.id);
+          if (!latest) return;
+          void saveNotebook(latest).catch((err) => {
+            toast.error(err instanceof Error ? err.message : 'Could not save your notebook.');
           });
-          setActiveSubjectId(newSubject.id);
+        }, SAVE_DEBOUNCE_MS),
+      );
+    },
+    [appSettings.autoSave, toast],
+  );
 
-          window.history.replaceState(null, '', window.location.pathname + window.location.search);
-          alert(`Successfully imported "${sharedSubjectData.name}"!`);
-        }
-      } catch (error) {
-        console.error("Failed to parse shared subject data:", error);
-        alert("Could not import the shared notebook. The link may be corrupted.");
-        window.history.replaceState(null, '', window.location.pathname + window.location.search);
-      }
-    }
+  // iPadOS reclaims background tabs aggressively, so flush on the way out.
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flushSaves();
+    };
+    window.addEventListener('pagehide', flushSaves);
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      window.removeEventListener('pagehide', flushSaves);
+      document.removeEventListener('visibilitychange', onHide);
+    };
+  }, [flushSaves]);
+
+  useEffect(() => saveAppSettings(appSettings), [appSettings]);
+  useEffect(() => saveToolSettings(toolSettings), [toolSettings]);
+  useEffect(() => saveCustomFonts(customFonts), [customFonts]);
+  useEffect(() => saveActiveNotebookId(activeId), [activeId]);
+
+  const updateNotebook = useCallback(
+    (id: string, updates: Partial<Notebook>) => {
+      setNotebooks((prev) =>
+        prev.map((n) => {
+          if (n.id !== id) return n;
+          const next = { ...n, ...updates, updatedAt: Date.now() };
+          scheduleSave(next);
+          return next;
+        }),
+      );
+    },
+    [scheduleSave],
+  );
+
+  const handleDocumentChange = useCallback(
+    (objects: NoteObject[]) => {
+      if (!activeId) return;
+      updateNotebook(activeId, { objects });
+    },
+    [activeId, updateNotebook],
+  );
+
+  const handleHistoryChange = useCallback((undoAvailable: boolean, redoAvailable: boolean) => {
+    setCanUndo(undoAvailable);
+    setCanRedo(redoAvailable);
   }, []);
 
-  const handleAddSubjectClick = useCallback(() => {
-    setIsAddingSubject(true);
-  }, []);
+  /* ---------------------------------------------------------------- */
+  /* Notebook management                                               */
+  /* ---------------------------------------------------------------- */
 
-  const handleCreateSubject = useCallback((name: string) => {
-    if (name.trim()) {
-      const newSubject: Subject = {
-        id: new Date().toISOString(),
-        name: name.trim(),
-        canvasState: [],
-        images: [],
-        pageCount: 5,
-        theme: 'light',
-        pageFormat: 'Letter',
-        pageBackground: 'ruled',
-        lineSpacingCm: 0.7,
-        lineColor: null,
-      };
-      setSubjects(prev => [...prev, newSubject]);
-      setActiveSubjectId(newSubject.id);
-    }
-    setIsAddingSubject(false);
-  }, []);
+  const createAndOpen = useCallback(
+    (notebook: Notebook) => {
+      setNotebooks((prev) => [...prev, notebook]);
+      setActiveId(notebook.id);
+      void saveNotebook(notebook).catch((err) => {
+        toast.error(err instanceof Error ? err.message : 'Could not save the new notebook.');
+      });
+    },
+    [toast],
+  );
 
-  const updateSubjectProperty = useCallback((id: string, updates: Partial<Subject>) => {
-    setSubjects(prevSubjects =>
-      prevSubjects.map(subject =>
-        subject.id === id ? { ...subject, ...updates } : subject
-      )
-    );
-  }, []);
+  const handleCreateNotebook = useCallback(
+    (name: string) => {
+      const template = activeNotebook;
+      createAndOpen(
+        createNotebook(name, {
+          // Inherit the look of what you are already working in.
+          theme: template?.theme ?? 'light',
+          pageFormat: template?.pageFormat ?? 'Letter',
+          pageBackground: template?.pageBackground ?? 'ruled',
+          lineSpacingCm: template?.lineSpacingCm ?? 0.8,
+          lineColor: template?.lineColor ?? null,
+        }),
+      );
+    },
+    [activeNotebook, createAndOpen],
+  );
 
-  const handleSubjectActions = useCallback((subjectId: string) => {
-    setActionsModalSubjectId(subjectId);
-  }, []);
-  
-  const handleDeleteSubject = useCallback((subjectId: string) => {
-    if (window.confirm('Are you sure you want to delete this subject and all its content?')) {
-      setSubjects(prev => {
-        const remaining = prev.filter(s => s.id !== subjectId);
-        if (activeSubjectId === subjectId) {
-          setActiveSubjectId(remaining.length > 0 ? remaining[0].id : null);
-        }
+  const handleDuplicate = useCallback(
+    (id: string) => {
+      const source = notebooks.find((n) => n.id === id);
+      if (!source) return;
+      createAndOpen({
+        ...source,
+        id: uid('nb'),
+        name: `${source.name} copy`,
+        // Fresh object ids so the two copies never collide in selection or undo.
+        objects: source.objects.map((o) => ({ ...o, id: uid(o.kind) })),
+        updatedAt: Date.now(),
+      });
+      setModal({ kind: 'none' });
+      toast.success('Notebook duplicated.');
+    },
+    [notebooks, createAndOpen, toast],
+  );
+
+  const handleDelete = useCallback(
+    (id: string) => {
+      setNotebooks((prev) => {
+        const remaining = prev.filter((n) => n.id !== id);
+        if (activeId === id) setActiveId(remaining[0]?.id ?? null);
         return remaining;
       });
-    }
-    setActionsModalSubjectId(null);
-  }, [activeSubjectId]);
-
-  const handleStartRenameSubject = useCallback((subjectId: string) => {
-    setRenamingSubjectId(subjectId);
-    setActionsModalSubjectId(null);
-  }, []);
-
-  const handleUpdateSubjectName = useCallback((subjectId: string, newName: string) => {
-    if (newName.trim()) {
-      updateSubjectProperty(subjectId, { name: newName.trim() });
-    }
-    setRenamingSubjectId(null);
-  }, [updateSubjectProperty]);
-
-  const handleShareExportSubject = useCallback((subject: Subject) => {
-    setShareExportSubject(subject);
-    setActionsModalSubjectId(null);
-  }, []);
-
-  const handleStartEditPages = useCallback((subjectId: string) => {
-    const subjectToEdit = subjects.find(s => s.id === subjectId);
-    if (subjectToEdit) {
-      setEditingPagesSubject(subjectToEdit);
-    }
-    setActionsModalSubjectId(null);
-  }, [subjects]);
-  
-  const handleStartEditPageStyle = useCallback((subjectId: string) => {
-    const subjectToEdit = subjects.find(s => s.id === subjectId);
-    if (subjectToEdit) {
-      setEditingPageStyleSubject(subjectToEdit);
-    }
-  }, [subjects]);
-
-  const handleUpdateSubjectPageCount = useCallback((subjectId: string, newPageCount: number) => {
-    updateSubjectProperty(subjectId, { pageCount: newPageCount });
-    setEditingPagesSubject(null);
-  }, [updateSubjectProperty]);
-  
-  const handleUpdateSubjectPageStyle = useCallback((subjectId: string, newSettings: { pageFormat: PageFormat; pageBackground: PageBackground; lineSpacingCm: number; lineColor: string | null; }) => {
-    updateSubjectProperty(subjectId, newSettings);
-    setEditingPageStyleSubject(null);
-  }, [updateSubjectProperty]);
-  
-  const handleClearAllData = useCallback(() => {
-    if (window.confirm("Are you sure you want to delete all saved notebook data? This action is irreversible.")) {
-      localStorage.removeItem(LOCAL_STORAGE_KEY_SUBJECTS);
-      localStorage.removeItem(LOCAL_STORAGE_KEY_SETTINGS);
-      localStorage.removeItem(LOCAL_STORAGE_KEY_FONTS);
-      window.location.reload();
-    }
-  }, []);
-
-  const handleImportNotebook = useCallback(async (files: FileList) => {
-    if (files.length === 0) return;
-
-    const newSubject: Subject = {
-      id: new Date().toISOString(),
-      name: `Imported - ${new Date().toLocaleDateString()}`,
-      canvasState: [],
-      images: [],
-      pageCount: files.length,
-      theme: 'light',
-      pageFormat: 'Letter',
-      pageBackground: 'blank',
-      lineSpacingCm: 0.7,
-      lineColor: null,
-    };
-    
-    const imageObjects: ImageObject[] = [];
-    const filePromises = Array.from(files).map((file, index) => {
-      return new Promise<void>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          if (typeof e.target?.result === 'string') {
-            if (file.type.startsWith('image/')) {
-              const img = new Image();
-              img.onload = () => {
-                const maxWidth = 816 - 40; // PAGE_WIDTH - margin
-                const scale = Math.min(1, maxWidth / img.width);
-                const pageTop = index * (1056 + 24); // PAGE_HEIGHT + PAGE_GAP
-                imageObjects.push({
-                  id: `${newSubject.id}-img-${index}`,
-                  src: img.src,
-                  x: 20,
-                  y: pageTop + 20,
-                  width: img.width * scale,
-                  height: img.height * scale,
-                });
-                resolve();
-              };
-              img.src = e.target.result as string;
-            } else if (file.type.startsWith('text/')) {
-              newSubject.canvasState.push({
-                id: `${newSubject.id}-text-${index}`,
-                tool: ToolType.Text,
-                text: e.target.result as string,
-                x: 40,
-                y: (index * (1056 + 24)) + 40,
-                fontSize: 16,
-                fontFamily: 'Lora',
-                color: '#000000',
-              });
-              resolve();
-            } else {
-              resolve();
-            }
-          } else {
-            resolve();
-          }
-        };
-        reader.onerror = () => resolve();
-
-        if (file.type.startsWith('image/')) {
-          reader.readAsDataURL(file);
-        } else if (file.type.startsWith('text/')) {
-          reader.readAsText(file);
-        } else {
-          resolve();
-        }
+      dirtyNotebooks.current.delete(id);
+      const timer = saveTimers.current.get(id);
+      if (timer) {
+        clearTimeout(timer);
+        saveTimers.current.delete(id);
+      }
+      void deleteNotebookRecord(id).catch(() => {
+        /* The notebook is already gone from view. */
       });
-    });
+      setModal({ kind: 'none' });
+      toast.success('Notebook deleted.');
+    },
+    [activeId, toast],
+  );
 
-    await Promise.all(filePromises);
+  const handleAddPage = useCallback(() => {
+    if (!activeNotebook) return;
+    updateNotebook(activeNotebook.id, { pageCount: activeNotebook.pageCount + 1 });
+  }, [activeNotebook, updateNotebook]);
 
-    newSubject.images = imageObjects;
-    setSubjects(prev => [...prev, newSubject]);
-    setActiveSubjectId(newSubject.id);
+  /* ---------------------------------------------------------------- */
+  /* Images                                                            */
+  /* ---------------------------------------------------------------- */
+
+  const handleAddImage = useCallback((source: 'library' | 'camera') => {
+    if (source === 'camera') cameraInputRef.current?.click();
+    else libraryInputRef.current?.click();
   }, []);
 
-  const handleSaveCustomFont = useCallback((fontData: Omit<CustomFont, 'id'>) => {
-    const newFont: CustomFont = {
-      ...fontData,
-      id: new Date().toISOString(),
-    };
-    setCustomFonts(prev => [newFont, ...prev]);
-    setIsCreateFontModalOpen(false);
-  }, []);
+  const handleImageFiles = useCallback(
+    async (fileList: FileList | null) => {
+      const engine = canvasRef.current?.engine;
+      if (!fileList || !engine) return;
+      const images = [...fileList].filter((f) => f.type.startsWith('image/'));
+      if (images.length === 0) {
+        toast.error('That file is not an image.');
+        return;
+      }
+      for (const file of images) await engine.insertImage(file);
+    },
+    [toast],
+  );
 
-  const activeSubject = subjects.find(s => s.id === activeSubjectId);
-  const actionsModalSubject = subjects.find(s => s.id === actionsModalSubjectId);
+  /* ---------------------------------------------------------------- */
+  /* Fonts                                                             */
+  /* ---------------------------------------------------------------- */
+
+  const handleSaveFont = useCallback(
+    (font: { id?: string; name: string; characters: Record<string, string> }) => {
+      setCustomFonts((prev) => {
+        if (font.id) {
+          return prev.map((f) =>
+            f.id === font.id ? { ...f, name: font.name, characters: font.characters } : f,
+          );
+        }
+        const created: CustomFont = { id: uid('font'), name: font.name, characters: font.characters };
+        setToolSettings((tools) => ({ ...tools, fontFamily: created.id, tool: 'text' }));
+        return [created, ...prev];
+      });
+      setModal({ kind: 'none' });
+      toast.success('Font saved.');
+    },
+    [toast],
+  );
+
+  /* ---------------------------------------------------------------- */
+  /* Print                                                             */
+  /* ---------------------------------------------------------------- */
+
+  const handlePrint = useCallback(
+    async (pages: number[]) => {
+      if (!activeNotebook) return;
+      setIsPrinting(true);
+      try {
+        await printPages(activeNotebook, pages, {
+          customFonts,
+          pressureEnabled: appSettings.pressureEnabled,
+        });
+        setModal({ kind: 'none' });
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Printing failed.');
+      } finally {
+        setIsPrinting(false);
+        // Leaving hundreds of full-page data URLs in the DOM keeps them in
+        // memory for the rest of the session.
+        setTimeout(clearPrintContainer, 1000);
+      }
+    },
+    [activeNotebook, customFonts, appSettings.pressureEnabled, toast],
+  );
+
+  /* ---------------------------------------------------------------- */
+  /* Settings actions                                                  */
+  /* ---------------------------------------------------------------- */
+
+  const handleImportFile = useCallback(
+    async (file: File) => {
+      try {
+        const imported = await importNotebookFile(file);
+        const hydrated = hydrateNotebook(imported, customFonts);
+        createAndOpen(hydrated);
+        setModal({ kind: 'none' });
+        toast.success(`Imported "${hydrated.name}".`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'That file could not be imported.');
+      }
+    },
+    [customFonts, createAndOpen, toast],
+  );
+
+  const handleCleanUpStorage = useCallback(async () => {
+    try {
+      const removed = await collectGarbage(notebooks);
+      toast.success(
+        removed > 0
+          ? `Removed ${removed} unused image${removed === 1 ? '' : 's'}.`
+          : 'Nothing to clean up.',
+      );
+      return removed;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Clean-up failed.');
+      return 0;
+    }
+  }, [notebooks, toast]);
+
+  const handleClearAll = useCallback(async () => {
+    try {
+      await clearAllData();
+      window.location.reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not clear data.');
+    }
+  }, [toast]);
+
+  /* ---------------------------------------------------------------- */
+  /* Render                                                            */
+  /* ---------------------------------------------------------------- */
+
+  const withEngine = (fn: (engine: NonNullable<NotebookCanvasHandle['engine']>) => void) => () => {
+    const engine = canvasRef.current?.engine;
+    if (engine) fn(engine);
+  };
+
+  const modalNotebook =
+    'id' in modal ? notebooks.find((n) => n.id === (modal as { id: string }).id) ?? null : null;
+
+  if (!ready) {
+    return (
+      <div className="flex h-[100dvh] w-screen items-center justify-center bg-slate-950 text-slate-400">
+        <SpinnerIcon className="h-6 w-6" />
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-black text-slate-200 overflow-hidden">
-      <Sidebar
-        subjects={subjects}
-        activeSubjectId={activeSubjectId}
-        onSelectSubject={setActiveSubjectId}
-        onAddSubject={handleAddSubjectClick}
-        isAddingSubject={isAddingSubject}
-        onCreateSubject={handleCreateSubject}
-        onSubjectActions={handleSubjectActions}
-        renamingSubjectId={renamingSubjectId}
-        onUpdateSubjectName={handleUpdateSubjectName}
-        onCancelRename={() => setRenamingSubjectId(null)}
-        onOpenSettings={() => setIsSettingsModalOpen(true)}
+    <div className="flex h-[100dvh] w-screen flex-col overflow-hidden bg-slate-950 text-slate-200">
+      <NotebookTabs
+        notebooks={notebooks}
+        activeId={activeId}
+        onSelect={setActiveId}
+        onCreate={handleCreateNotebook}
+        onOpenActions={(id) => setModal({ kind: 'actions', id })}
+        renamingId={renamingId}
+        onCommitRename={(id, name) => {
+          if (name.trim()) updateNotebook(id, { name: name.trim() });
+          setRenamingId(null);
+        }}
+        onCancelRename={() => setRenamingId(null)}
+        onOpenSettings={() => setModal({ kind: 'settings' })}
       />
-      
-      <main className="flex-1 flex flex-col h-full relative overflow-hidden">
-        {activeSubject ? (
-          <Notebook
-            ref={notebookRef}
-            key={activeSubject.id}
-            subject={activeSubject}
-            onSaveCanvas={(id, canvasState) => updateSubjectProperty(id, { canvasState })}
-            onUpdateImages={(id, images) => updateSubjectProperty(id, { images })}
-            onPageCountChange={(id, pageCount) => updateSubjectProperty(id, { pageCount })}
-            theme={activeSubject.theme}
-            onThemeChange={() => updateSubjectProperty(activeSubject.id, { theme: activeSubject.theme === 'light' ? 'dark' : 'light' })}
-            onOpenPageStyleSettings={() => handleStartEditPageStyle(activeSubject.id)}
+
+      {activeNotebook ? (
+        <>
+          <Toolbar
+            settings={toolSettings}
+            onSettingsChange={(updater) => setToolSettings(updater)}
             customFonts={customFonts}
-            onOpenCreateFont={() => setIsCreateFontModalOpen(true)}
-            isRulerVisible={isRulerVisible}
-            onToggleRuler={() => setIsRulerVisible(v => !v)}
+            onCreateFont={() => setModal({ kind: 'createFont', editing: null })}
+            theme={activeNotebook.theme}
+            onToggleTheme={() =>
+              updateNotebook(activeNotebook.id, {
+                theme: activeNotebook.theme === 'light' ? 'dark' : 'light',
+              })
+            }
+            onUndo={withEngine((e) => e.undo())}
+            onRedo={withEngine((e) => e.redo())}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onAddImage={handleAddImage}
+            onOpenPageStyle={() => setModal({ kind: 'pageStyle', id: activeNotebook.id })}
+            onOpenShare={() => setModal({ kind: 'share', id: activeNotebook.id })}
+            onPrint={() => setModal({ kind: 'print' })}
+            rulerVisible={rulerVisible}
+            onToggleRuler={withEngine((e) => {
+              e.toggleRuler();
+              setRulerVisible(e.getRuler().visible);
+            })}
           />
-        ) : (
-          <div className="flex-1 flex items-center justify-center bg-slate-800/50">
-            <div className="text-center">
-              <h1 className="text-3xl font-bold text-slate-400">Welcome to Zenith Notebook</h1>
-              <p className="mt-2 text-slate-500">Select a subject or create a new one to begin.</p>
-            </div>
-          </div>
-        )}
-      </main>
-      
-      {actionsModalSubject && (
+
+          <NotebookCanvas
+            ref={canvasRef}
+            notebook={activeNotebook}
+            toolSettings={toolSettings}
+            appSettings={appSettings}
+            customFonts={customFonts}
+            onDocumentChange={handleDocumentChange}
+            onHistoryChange={handleHistoryChange}
+            onAddPage={handleAddPage}
+            onError={toast.error}
+          />
+        </>
+      ) : (
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+          <h1 className="text-2xl font-semibold text-slate-300">No notebooks yet</h1>
+          <p className="max-w-sm text-sm text-slate-500">
+            Create one with the + button above, or import a .zenith file from Settings.
+          </p>
+        </div>
+      )}
+
+      {modal.kind === 'actions' && modalNotebook && (
         <ActionsModal
-          subject={actionsModalSubject}
-          onClose={() => setActionsModalSubjectId(null)}
-          onDelete={handleDeleteSubject}
-          onRename={handleStartRenameSubject}
-          onEditPages={handleStartEditPages}
-          onShareExport={handleShareExportSubject}
+          notebook={modalNotebook}
+          onClose={() => setModal({ kind: 'none' })}
+          onRename={(id) => {
+            setModal({ kind: 'none' });
+            setRenamingId(id);
+          }}
+          onEditPages={(id) => setModal({ kind: 'pages', id })}
+          onPageStyle={(id) => setModal({ kind: 'pageStyle', id })}
+          onShareExport={(id) => setModal({ kind: 'share', id })}
+          onDuplicate={handleDuplicate}
+          onDelete={handleDelete}
         />
       )}
 
-      {shareExportSubject && (
-        <ShareExportModal 
-          subject={shareExportSubject} 
-          onClose={() => setShareExportSubject(null)} 
-          renderCanvas={notebookRef.current?.renderFullCanvas}
-        />
-      )}
-
-      {editingPagesSubject && (
+      {modal.kind === 'pages' && modalNotebook && (
         <EditPagesModal
-          subject={editingPagesSubject}
-          onClose={() => setEditingPagesSubject(null)}
-          onSave={handleUpdateSubjectPageCount}
+          notebook={modalNotebook}
+          onClose={() => setModal({ kind: 'none' })}
+          onSave={(id, pageCount) => {
+            updateNotebook(id, { pageCount });
+            setModal({ kind: 'none' });
+          }}
         />
       )}
 
-      {editingPageStyleSubject && (
+      {modal.kind === 'pageStyle' && modalNotebook && (
         <PageSettingsModal
-          subject={editingPageStyleSubject}
-          onClose={() => setEditingPageStyleSubject(null)}
-          onSave={handleUpdateSubjectPageStyle}
-        />
-      )}
-      
-      {isSettingsModalOpen && (
-        <SettingsModal
-            onClose={() => setIsSettingsModalOpen(false)}
-            settings={settings}
-            onSettingsChange={setSettings}
-            onClearAllData={handleClearAllData}
-            onImportNotebook={handleImportNotebook}
+          notebook={modalNotebook}
+          onClose={() => setModal({ kind: 'none' })}
+          onSave={(id, update: PageStyleUpdate) => {
+            updateNotebook(id, update);
+            setModal({ kind: 'none' });
+          }}
         />
       )}
 
-      {isCreateFontModalOpen && (
-        <CreateFontModal
-          onClose={() => setIsCreateFontModalOpen(false)}
-          onSave={handleSaveCustomFont}
+      {modal.kind === 'share' && modalNotebook && (
+        <ShareExportModal
+          notebook={modalNotebook}
+          customFonts={customFonts}
+          pressureEnabled={appSettings.pressureEnabled}
+          onClose={() => setModal({ kind: 'none' })}
+          onNotify={(message, tone) => toast.show(message, tone)}
         />
       )}
+
+      {modal.kind === 'print' && activeNotebook && (
+        <PrintModal
+          totalPages={activeNotebook.pageCount}
+          onClose={() => setModal({ kind: 'none' })}
+          onPrint={handlePrint}
+          isPreparing={isPrinting}
+        />
+      )}
+
+      {modal.kind === 'settings' && (
+        <SettingsModal
+          onClose={() => setModal({ kind: 'none' })}
+          settings={appSettings}
+          onSettingsChange={setAppSettings}
+          onClearAllData={handleClearAll}
+          onImportFile={handleImportFile}
+          onCleanUpStorage={handleCleanUpStorage}
+        />
+      )}
+
+      {modal.kind === 'createFont' && (
+        <CreateFontModal
+          editing={modal.editing}
+          onClose={() => setModal({ kind: 'none' })}
+          onSave={handleSaveFont}
+        />
+      )}
+
+      <input
+        ref={libraryInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          void handleImageFiles(e.target.files);
+          e.target.value = '';
+        }}
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          void handleImageFiles(e.target.files);
+          e.target.value = '';
+        }}
+      />
     </div>
   );
 };
